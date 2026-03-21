@@ -87,6 +87,7 @@ const P={bossesCleared:0,prestige:0,pBonus:1,allScore:0,best:0};
 
 // 每局数据：startGame 完整重建
 let G={state:'idle',score:0,gold:0,wave:1,hp:100,maxHp:100,shield:0,frame:0,lt:0,mx:W/2,my:H-70,sCool:0,dCool:0,dActive:0,wState:'pause',wPause:60,wLeft:0,wTotal:0,autoSell:1,sTimer:0,skipActive:false,skipProg:0,skipTarget:0,skipT0:0,skipCB:null};
+let dashHeld=false;
 
 // 通关第N个BOSS后下次冲至波次 N*5+1
 function getSkipTarget(){return P.bossesCleared>=1?P.bossesCleared*5+1:0;}
@@ -571,7 +572,18 @@ function updHUD(){
 
 CV.addEventListener('mousemove',e=>{const r=CV.getBoundingClientRect(),sx=W/r.width,sy=H/r.height;G.mx=(e.clientX-r.left)*sx;G.my=(e.clientY-r.top)*sy;});
 CV.addEventListener('touchmove',e=>{e.preventDefault();const r=CV.getBoundingClientRect(),sx=W/r.width,sy=H/r.height;G.mx=(e.touches[0].clientX-r.left)*sx;G.my=(e.touches[0].clientY-r.top)*sy;},{passive:false});
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&G.state==='playing'&&UPG.defense.dash.lv>0&&G.dCool<=0){G.dActive=20+UPG.defense.dash.lv*5;G.dCool=100-UPG.defense.dash.lv*12;toast('冲刺!');e.preventDefault();}});
+document.addEventListener('keydown',e=>{
+  if(e.code!=='Space')return;
+  e.preventDefault();
+  if(e.repeat||dashHeld)return;
+  dashHeld=true;
+  if(G.state==='playing'&&UPG.defense.dash.lv>0&&G.dCool<=0){
+    G.dActive=20+UPG.defense.dash.lv*5;
+    G.dCool=100-UPG.defense.dash.lv*12;
+    toast('冲刺!');
+  }
+});
+document.addEventListener('keyup',e=>{if(e.code==='Space')dashHeld=false;});
 
 initStars();
 drawBg();
