@@ -36,6 +36,7 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 #wb{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);color:#FFE066;font-size:17px;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .4s;text-align:center;line-height:1.6;z-index:5}
 #skipOv,#cardOv{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:20;border-radius:4px}
 #skipOv.show,#cardOv.show{display:flex}
+#skillOv{position:absolute;bottom:0;left:0;width:100%;background:#080810;border-top:1px solid #2a2a2a;padding:10px;display:none;flex-direction:column;align-items:center;z-index:10}
 .card3{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;justify-content:center}
 .sc{width:140px;min-height:168px;background:#0d1520;border:2px solid #2a4a7a;border-radius:8px;padding:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;text-align:center;transition:border-color .15s}
 .sc:hover{border-color:#7DF9AA;background:#0d1a14}
@@ -95,6 +96,7 @@ const P={rc:0,clearedWave:0,gold:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
 
 // ═══ 每局数据（startGame重建） ═══
 let G=null,PL=null;
+let hasSkillCards = false;
 let stars=[],pB=[],eB=[],enemies=[],parts=[],drops=[],cZ=[],wQ=[],spT=0;
 
 // ═══ loop控制：唯一入口 ═══
@@ -218,11 +220,14 @@ function pickCards(){
 // showCards：在右侧面板展示卡牌选择，非阻塞；选完回调
 function showCards(n,label,done){
   if(n<=0){
+    hasSkillCards = false;
+    document.getElementById('skillOv').style.display = 'none';
+    if(G) G.state = 'playing';
     if(done)done();
-    document.getElementById('skillOv').className = '';
-    if(G && G.state === 'playing') startLoop();
+    startLoop();
     return;
   }
+  hasSkillCards = true;
   const choices=pickCards();
   const sub=document.getElementById('skillSub');
   sub.textContent=label||'选择技能';
@@ -238,8 +243,9 @@ function showCards(n,label,done){
     };
     row.appendChild(d);
   });
-  document.getElementById('skillOv').className = 'show';
-  if(G && G.state === 'playing') stopLoop();
+  document.getElementById('skillOv').style.display = 'flex';
+  if(G) G.state = 'paused';
+  stopLoop();
 }
 
 // ═══ 装备生成 ═══
@@ -933,7 +939,7 @@ function ST(tab){
   curTab=tab;
   // 任何切换都要关闭卡牌弹窗，只有战斗界面可见技能卡
   document.getElementById('cardOv').className='';
-  document.getElementById('skillOv').className='';
+  document.getElementById('skillOv').style.display = tab === 'game' && hasSkillCards ? 'flex' : 'none';
   document.getElementById('skipOv').className='';
   ['game','minion','gear','skill'].forEach(t=>document.getElementById('tab-'+t).className='tab'+(t===tab?' on':''));
   CV.style.display=tab==='game'?'block':'none';
@@ -942,8 +948,10 @@ function ST(tab){
   // 切换到游戏页面时，如果不是死亡状态则恢复循环；切换出去则暂停循环
   if(tab === 'game'){
     if(G && G.state !== 'dead'){
-      G.state = 'playing';
-      startLoop();
+      if(!hasSkillCards){
+        G.state = 'playing';
+        startLoop();
+      }
     }
   } else {
     stopLoop();
