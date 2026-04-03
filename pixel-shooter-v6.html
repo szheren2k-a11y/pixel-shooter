@@ -271,16 +271,10 @@ function rollGear(minR,wave,boss,forceType){
   return{name:pfx+nms[type][Math.floor(Math.random()*nms[type].length)],type,rarity:ri,stats,suit,wsuit,sub,id:Math.random()};
 }
 
-// 初始化5件武器到背包（普通品质，速射/步枪/散弹/火炮/激光各1）
+// 初始化装备与背包（不再赠送初始武器）
 function initWeapons(){
   eq={武器:null,护甲:null,头盔:null,饰品:null};
   bag=[];
-  WSUB.forEach(sub=>{
-    const g=rollGear(1,1,false,'武器');
-    g.sub=sub;
-    g.rarity=0;
-    bag.push(g);
-  });
 }
 
 function autoProc(w){
@@ -486,11 +480,28 @@ function drawE(e){
   CT.save();
   const bx=Math.max(4,Math.min(W-w-4,x-w/2));
   if(shape==='boss'){
-    const p=Math.sin(G.fr*.08)*3;CT.fillStyle='hsl('+(G.fr*2%360)+',75%,48%)';CT.fillRect(Math.round(x-w/2),Math.round(y-h/2-p),w,h+p*2);
-    CT.fillStyle='rgba(255,255,255,.15)';CT.fillRect(Math.round(x-w/2),Math.round(y-h/2-p),w,4);
-    CT.fillStyle='#fff';CT.font='bold 9px monospace';CT.textAlign='center';CT.fillText('BOSS',x,y+4);
-    CT.fillStyle='rgba(0,0,0,.45)';CT.fillRect(bx,Math.round(y+h/2+4),w,6);
-    CT.fillStyle=hr>.5?'#4ade80':hr>.25?'#FFE066':'#FF6B6B';CT.fillRect(bx,Math.round(y+h/2+4),Math.round(w*hr),6);
+    const p=Math.sin(G.fr*.08)*3;
+    CT.fillStyle='hsl('+(G.fr*2%360)+',75%,48%)';
+    CT.beginPath();
+    CT.moveTo(x,y-h/2-p-8);
+    CT.lineTo(x+w/2+4,y-h/2+6-p);
+    CT.lineTo(x+w/2,y+h/2+p-6);
+    CT.lineTo(x,y+h/2+p+10);
+    CT.lineTo(x-w/2,y+h/2+p-6);
+    CT.lineTo(x-w/2-4,y-h/2+6-p);
+    CT.closePath();
+    CT.fill();
+    CT.fillStyle='rgba(255,255,255,.15)';
+    CT.beginPath();
+    CT.moveTo(x-12,y-h/2-p+2);
+    CT.lineTo(x+12,y-h/2-p+2);
+    CT.lineTo(x+4,y-h/2-p+10);
+    CT.lineTo(x-4,y-h/2-p+10);
+    CT.closePath();
+    CT.fill();
+    CT.fillStyle='#fff';CT.font='bold 9px monospace';CT.textAlign='center';CT.fillText('BOSS',x,y+5);
+    CT.fillStyle='rgba(0,0,0,.45)';CT.fillRect(bx,Math.round(y+h/2+6),w,6);
+    CT.fillStyle=hr>.5?'#4ade80':hr>.25?'#FFE066':'#FF6B6B';CT.fillRect(bx,Math.round(y+h/2+6),Math.round(w*hr),6);
   }else if(shape==='tri'){
     CT.fillStyle=col;CT.beginPath();CT.moveTo(x,y-h/2);CT.lineTo(x+w/2,y+h/2);CT.lineTo(x-w/2,y+h/2);CT.closePath();CT.fill();
     CT.fillStyle='rgba(255,255,255,.12)';CT.beginPath();CT.moveTo(x,y-h/2);CT.lineTo(x+w/2,y+h/2);CT.lineTo(x,y+h/5);CT.closePath();CT.fill();
@@ -506,8 +517,28 @@ function drawE(e){
     CT.globalAlpha=1;
     if(hr<1){CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(bx,Math.round(y+h/2+2),w,3);CT.fillStyle='#7DF9AA';CT.fillRect(bx,Math.round(y+h/2+2),Math.round(w*hr),3);}
   }else{
-    CT.fillStyle=col;CT.fillRect(Math.round(x-w/2),Math.round(y-h/2),w,h);
-    CT.fillStyle='rgba(255,255,255,.12)';CT.fillRect(Math.round(x-w/2),Math.round(y-h/2),w,3);
+    // 基础兵改为八边形，避免全是方块观感
+    const rx=w/2,ry=h/2,cut=Math.min(rx,ry)*0.35;
+    CT.fillStyle=col;
+    CT.beginPath();
+    CT.moveTo(x-rx+cut,y-ry);
+    CT.lineTo(x+rx-cut,y-ry);
+    CT.lineTo(x+rx,y-ry+cut);
+    CT.lineTo(x+rx,y+ry-cut);
+    CT.lineTo(x+rx-cut,y+ry);
+    CT.lineTo(x-rx+cut,y+ry);
+    CT.lineTo(x-rx,y+ry-cut);
+    CT.lineTo(x-rx,y-ry+cut);
+    CT.closePath();
+    CT.fill();
+    CT.fillStyle='rgba(255,255,255,.16)';
+    CT.beginPath();
+    CT.moveTo(x-rx*.45,y-ry*.55);
+    CT.lineTo(x+rx*.35,y-ry*.55);
+    CT.lineTo(x+rx*.12,y-ry*.08);
+    CT.lineTo(x-rx*.55,y-ry*.08);
+    CT.closePath();
+    CT.fill();
     if(hr<1){CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(bx,Math.round(y+h/2+2),w,3);CT.fillStyle='#7DF9AA';CT.fillRect(bx,Math.round(y+h/2+2),Math.round(w*hr),3);}
   }
   CT.restore();
@@ -1096,10 +1127,10 @@ document.addEventListener('keydown',e=>{if(e.code==='Space'&&G&&G.state==='playi
 // ═══ 初始化：只画一帧，绝不启动 loop ═══
 initStars();drawBg(1);
 CT.fillStyle='#7DF9AA';CT.font='bold 20px monospace';CT.textAlign='center';CT.fillText('像素射击战 v6',W/2,H/2-32);
-CT.fillStyle='#555';CT.font='12px monospace';CT.fillText('技能卡牌 | 5种武器 | 转生币抽卡',W/2,H/2);
+CT.fillStyle='#555';CT.font='12px monospace';CT.fillText('技能卡牌 | 开局无初始武器 | 转生币抽卡',W/2,H/2);
 CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('空格爆炸 | 金币累计 | BOSS后选技能',W/2,H/2+22);
 updHUD();
 
-// 初始化5种普通武器（确保全部为武器）
+// 初始化背包（开局不再赠送武器）
 initWeapons();
 </script></body></html>
