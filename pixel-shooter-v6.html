@@ -34,8 +34,8 @@ button{padding:5px 14px;font-size:12px;cursor:pointer;background:#0a0a14;color:#
 button:hover{border-color:#7DF9AA;color:#7DF9AA}
 #msg2{margin-top:4px;font-size:10px;color:#333;text-align:center}
 #wb{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);color:#FFE066;font-size:17px;font-weight:bold;pointer-events:none;opacity:0;transition:opacity .4s;text-align:center;line-height:1.6;z-index:5}
-#skipOv,#cardOv,#skillOv{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:20;border-radius:4px}
-#skipOv.show,#cardOv.show,#skillOv.show{display:flex}
+#skipOv,#cardOv{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.92);display:none;flex-direction:column;align-items:center;justify-content:center;z-index:20;border-radius:4px}
+#skipOv.show,#cardOv.show{display:flex}
 .card3{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;justify-content:center}
 .sc{width:140px;min-height:168px;background:#0d1520;border:2px solid #2a4a7a;border-radius:8px;padding:10px;cursor:pointer;display:flex;flex-direction:column;align-items:center;text-align:center;transition:border-color .15s}
 .sc:hover{border-color:#7DF9AA;background:#0d1a14}
@@ -114,7 +114,6 @@ let playerLevel=1,playerExp=0,expToNext=50;
 
 // ═══ 技能（本局，死亡清零） ═══
 let SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0};
-let skillSelecting = false;
 
 // ═══ 品质 ═══
 const RAR=[
@@ -138,8 +137,7 @@ const AS={
   '护盾套':{s:['护甲','头盔'],d:'受伤后获3护盾',c:'#60a5fa'},
   '暴击套':{s:['武器','饰品'],d:'暴击+30%伤害x2',c:'#FFE066'},
 };
-// 检查护甲套装是否激活（需艒2件以上）
-function SA(n){return AS[n].s.filter(t=>eq[t]?.suit===n).length>=2;}
+function SA(n){return AS[n].s.filter(t=>eq[t]&&eq[t].suit===n).length>=2;}
 
 // ═══ 武器套装 ═══
 const WS={
@@ -148,9 +146,7 @@ const WS={
   '高能套':{d:'2件分裂3颗 4件分裂7颗'},
   '激光套':{d:'2件激光冷却-1秒 4件激光冷却-2秒'},
 };
-// 检查武器套装的件数
-function wsN(n){return GT.filter(t=>eq[t]?.wsuit===n).length;}
-// 武器套装效果（蛮风师、弹道、高能、激光）
+function wsN(n){return GT.filter(t=>eq[t]&&eq[t].wsuit===n).length;}
 function wsB(){
   let rm=1,es=0,sp=0;
   const fw=wsN('疾风套');if(fw>=4)rm*=0.5;else if(fw>=2)rm*=0.8;
@@ -159,7 +155,7 @@ function wsB(){
   return{rm,es,sp};
 }
 
-// ═══ 武器子类型效果（返回射速、伤害、弹道、爆炸、激光等修正） ═══
+// ═══ 武器子类型效果 ═══
 function wMods(){
   const w=eq['武器'];
   if(!w||!w.sub){
@@ -184,24 +180,15 @@ function wMods(){
   return{rm:1,dm:1,es:0,cm:false,cr:0,lm:false,lc:120};
 }
 
-// ═══ 属性计算工具 ═══
-// 从所有装备统计某个属性
-function gS(s){let v=0;for(const g of Object.values(eq))if(g?.stats?.[s])v+=g.stats[s];return v;}
-// 计算攻击力（装备+技能buff+武器修正）
+// ═══ 属性计算 ═══
+function gS(s){let v=0;for(const g of Object.values(eq))if(g&&g.stats&&g.stats[s])v+=g.stats[s];return v;}
 function getAtk(){return(1+gS('攻击')/20)*(1+SK.atk)*wMods().dm;}
-// 计算暴击率（装备+技能+套装加成）
-function getCrit(){let c=Math.min(.88,gS('暴击率')/100+SK.crit);return SA('暴击套')?Math.min(.95,c+.3):c;}
-// 计算暴击伤害倍率（基础1.5x+装备+套装2倍）
+function getCrit(){let c=Math.min(.88,gS('暴击率')/100+SK.crit);if(SA('暴击套'))c=Math.min(.95,c+.3);return c;}
 function getCritD(){return(1.5+gS('暴击伤害')/100)*(SA('暴击套')?2:1);}
-// 计算减伤比例（上限75%）
 function getDef(){return Math.min(.75,(gS('防御')/100+gS('格挡')/150)*(1+SK.def));}
-// 计算最大HP
 function getMxHp(){return Math.round(100+gS('最大HP')+SK.hpUp);}
-// 计算射击间隔（帧数，越小射速越快）
 function getFireI(){return Math.max(3,(20-SK.fr*20)*wMods().rm*wsB().rm);}
-// 计算弹道数
 function getMS(){return Math.max(1,1+SK.ms+wMods().es+wsB().es);}
-// 计算金币倍率
 function getCB(){return 1+gS('金币')/80;}
 
 // ═══ 技能卡牌 ═══
@@ -222,23 +209,20 @@ const FILL=[
   {ic:'+',n:'+1%HP',d:'充数',fn(){SK.hpUp+=2;}},
 ];
 
-// 弹卡逻辑(从卡池随机5张，不足补充填数卡)
 function pickCards(){
   const pool=[...SPOOL].sort(()=>Math.random()-.5).slice(0,3);
   while(pool.length<3)pool.push(FILL[Math.floor(Math.random()*3)]);
   return pool.slice(0,3);
 }
 
-// 显示技能卡牌选择界面
+// showCards：在右侧面板展示卡牌选择，非阻塞；选完回调
 function showCards(n,label,done){
   if(n<=0){
     if(done)done();
     document.getElementById('skillOv').className = '';
-    skillSelecting = false;
     if(G && G.state === 'playing') startLoop();
     return;
   }
-  skillSelecting = true;
   const choices=pickCards();
   const sub=document.getElementById('skillSub');
   sub.textContent=label||'选择技能';
@@ -258,7 +242,7 @@ function showCards(n,label,done){
   if(G && G.state === 'playing') stopLoop();
 }
 
-// ═══ 装备生成（品质、属性、套装全随机） ═══
+// ═══ 装备生成 ═══
 function rollGear(minR,wave,boss,forceType){
   minR=minR||0;wave=wave||1;boss=!!boss;
   // boss掉落：无普通，高品质概率高
@@ -281,7 +265,7 @@ function rollGear(minR,wave,boss,forceType){
   return{name:pfx+nms[type][Math.floor(Math.random()*nms[type].length)],type,rarity:ri,stats,suit,wsuit,sub,id:Math.random()};
 }
 
-// 初始化5种武器到背包（各一个，普通品质，不同子类型）
+// 初始化5件武器到背包（普通品质，速射/步枪/散弹/火炮/激光各1）
 function initWeapons(){
   eq={武器:null,护甲:null,头盔:null,饰品:null};
   bag=[];
@@ -293,7 +277,6 @@ function initWeapons(){
   });
 }
 
-// 自动处理装备（卖出低品质、插槽升级/上壳）
 function autoProc(w){
   // 自动卖出普通品质
   bag=bag.filter(g=>{if(autoSellMinRarity>=0&&g.rarity<=autoSellMinRarity){P.gold+=(g.rarity===0?3:5+g.rarity*12);return false;}return true;});
@@ -335,7 +318,6 @@ let mD={archer:null,knight:null,mage:null,healer:null},mAct=[],mCl={archer:0,kni
 function mCD(t){const d=mD[t];if(!d)return 9999;const b={archer:40,knight:150,mage:100,healer:120};return Math.max(10,b[t]-(d.ri+d.lv)*12);}
 function mPow(t){const d=mD[t];if(!d)return 1;return 1+(d.ri+d.lv)*0.9;}
 
-// 仆从抽卡
 function doGacha(n){
   const cost=n*5;if(P.rc<cost){showToast('转生币不足需'+cost);return;}P.rc-=cost;
   const res=[];
@@ -409,7 +391,7 @@ function initStars(){stars=[];for(let i=0;i<80;i++)stars.push({x:Math.random()*W
 function drawBg(dt){CT.fillStyle='#02020b';CT.fillRect(0,0,W,H);stars.forEach(s=>{s.y=(s.y+s.sp*(dt||1))%H;CT.fillStyle='rgba(180,190,255,'+(.12+s.br*.25).toFixed(2)+')';CT.fillRect(Math.round(s.x),Math.round(s.y),Math.ceil(s.r),Math.ceil(s.r));});}
 function spP(x,y,color,n){n=n||10;for(let i=0;i<n;i++)parts.push({x,y,vx:(Math.random()-.5)*6,vy:(Math.random()-.5)*6,life:.9,color,sz:Math.random()*3+1.5,glow:false,txt:null});}
 
-// ═══ 玩家绘制和动画 ═══
+// ═══ 玩家绘制 ═══
 function drawPL(){
   if(!PL)return;
   const{x,y,inv,wf,dir}=PL;
@@ -440,8 +422,7 @@ function drawPL(){
   });
 }
 
-// ═══ 怪物类型、难度、生成队列信息 ═══
-// 5种怪物：基础兵 -> 突击兵 -> 重装兵 -> 幽灵 -> BOSS
+// ═══ 怪物 ═══
 const ET=[
   {n:'基础兵',w:24,h:18,hp:2,spd:.6,exp:10,cn:5,col:'#FF6B6B',shape:'basic',sI:90,bS:2.8,bP:'single'},
   {n:'突击兵',w:20,h:20,hp:3,spd:.85,exp:20,cn:10,col:'#FF9F43',shape:'tri',sI:65,bS:3.5,bP:'aimed'},
@@ -449,11 +430,8 @@ const ET=[
   {n:'幽灵',w:22,h:28,hp:4,spd:.5,exp:28,cn:14,col:'#2dd4bf',shape:'ghost',sI:75,bS:3,bP:'spiral'},
   {n:'BOSS',w:52,h:40,hp:40,spd:.22,exp:300,cn:120,col:'#FFE066',shape:'boss',sI:30,bS:3,bP:'boss'},
 ];
-// 波次难度倍数（随波数指数增长）
 function wDiff(w){return 1+Math.pow(w-1,.65)*.6;}
-// 当前波次属性倍增（HP、速度、伤害、掉落金币）
 function eM(w){return {hp:1+w*.18,spd:1+w*.08,dmg:1+w*.15,cn:1+w*.1};}
-// 根据波次生成敌人队列，BOSS波单独特殊处理
 function buildQ(){
   const q=[],em=eM(G.wave);
   if(G.wave%5===0){
@@ -536,8 +514,8 @@ function drawDrop(d){
   CT.fillStyle=rc;CT.font='bold 10px monospace';CT.textAlign='center';CT.fillText('#',d.x,d.y+4+p*.1);
 }
 
-// ═══ 核心游戏循环（requestAnimationFrame）═══
-// 关键架构：RID在tick顶部立即续帧，确保stopLoop后下一帧不会再调用
+// ═══ 主游戏循环 ═══
+// 关键：RID 在 tick 顶部续帧，这样 stopLoop 后下一帧不会再调
 function tick(ts){
   // 立刻续帧（在任何 return 之前）
   RID=requestAnimationFrame(tick);
@@ -906,8 +884,6 @@ function startGame(){
   stopLoop();
   document.getElementById('cardOv').className='';
   document.getElementById('skipOv').className='';
-  document.getElementById('skillOv').className=''; // 确保技能界面也关闭
-  skillSelecting = false; // 重置技能选择状态
 
   // 重置每局数据（金币在P.gold中持久保存）
   SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0};
@@ -951,49 +927,34 @@ function startGame(){
   }
 }
 
-// ═══ UI标签切换，管理显示内容和游戏状态 ═══
-// 同时处理：技能选择离线恢复、循环暂停/继续、内容渲染
+// ═══ UI ═══
 let curTab='game';
 function ST(tab){
   curTab=tab;
-  // 隐藏覆盖层（除非正在选择技能）
+  // 任何切换都要关闭卡牌弹窗，只有战斗界面可见技能卡
   document.getElementById('cardOv').className='';
-  if(!skillSelecting) document.getElementById('skillOv').className='';
+  document.getElementById('skillOv').className='';
   document.getElementById('skipOv').className='';
   ['game','minion','gear','skill'].forEach(t=>document.getElementById('tab-'+t).className='tab'+(t===tab?' on':''));
   CV.style.display=tab==='game'?'block':'none';
   const rp=document.getElementById('rp');rp.className=tab!=='game'?'rightPanel show':'rightPanel';
 
+  // 切换到游戏页面时，如果不是死亡状态则恢复循环；切换出去则暂停循环
   if(tab === 'game'){
-    if(skillSelecting) document.getElementById('skillOv').className = 'show'; // 恢复技能界面
-    if(G && G.state !== 'dead'){ G.state = 'playing'; startLoop(); }
+    if(G && G.state !== 'dead'){
+      G.state = 'playing';
+      startLoop();
+    }
   } else {
-    stopLoop(); // 切出游戏则暂停循环
+    stopLoop();
   }
 
-  // 渲染对应标签的UI
   if(tab==='minion')renderMinion();
   else if(tab==='gear')renderGear();
   else if(tab==='skill')renderSkill();
 }
-// ═══ 通用UI工具函数 ═══
-// 创建分区标题
 function mkSec(par,txt){const s=document.createElement('div');s.className='sec';s.textContent=txt;par.appendChild(s);}
-// 显示短期提示消息（屏幕中上）
-function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(t._t);t._t=setTimeout(()=>t.style.opacity=0,1900);}
-// 显示世界提示（屏幕中央，通常用于跳关/波次信息）
-function showWB(txt){const b=document.getElementById('wb');b.innerHTML=txt;b.style.opacity=1;clearTimeout(b._t);b._t=setTimeout(()=>b.style.opacity=0,2200);}
-// 更新HUD（血条、资源、等级等）
-function updHUD(){
-  const mh=getMxHp();if(G){G.maxHp=mh;G.hp=Math.max(0,Math.min(G.hp,mh));}
-  const hp=G?G.hp:mh,pct=Math.round(hp/mh*100);
-  document.getElementById('hpf').style.width=pct+'%';document.getElementById('hpf').style.background=pct>60?'#4ade80':pct>30?'#FFE066':'#FF6B6B';
-  document.getElementById('hpt').textContent=Math.round(hp)+'/'+mh;
-  document.getElementById('tc').textContent=Math.round(P.gold);document.getElementById('rc').textContent=P.rc;
-  document.getElementById('sc').textContent='Lv.'+playerLevel+' Exp:'+playerExp+'/'+expToNext;document.getElementById('hi').textContent='';document.getElementById('wv').textContent=G?G.wave:1;
-}
 
-// ═══ 仆从界面 ═══
 function renderMinion(){
   const rp=document.getElementById('rp');rp.innerHTML='';
   mkSec(rp,'仆从抽卡（转生币）');
@@ -1026,7 +987,6 @@ function renderMinion(){
 }
 
 let gSub='武器';
-// ═══ 装备界面（套装、自动卖出、强化、升阶、装备选择） ═══
 function renderGear(){
   const rp=document.getElementById('rp');rp.innerHTML='';
   mkSec(rp,'护甲套装');const sg=document.createElement('div');sg.className='g2';
@@ -1092,7 +1052,6 @@ function sellBelow(t){
 }
 function sellAll(t){let c=0,v=0;bag=bag.filter(g=>{if(g.type===t){v+=5+g.rarity*12;c++;return false;}return true;});P.gold+=v;showToast('卖出'+c+'件 +'+v+'金');updHUD();renderGear();}
 
-// ═══ 技能界面（显示当前局积累的技能，仅在战斗中可见） ═══
 function renderSkill(){
   const rp=document.getElementById('rp');rp.innerHTML='';
 
