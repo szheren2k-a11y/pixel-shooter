@@ -1,20 +1,24 @@
 <!DOCTYPE html>
-<html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>像素射击战 v6</title>
+<html lang="zh"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><title>像素射击战 v6</title>
 <style>
+:root{
+  --game-w:min(500px,calc(100vw - 16px));
+}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#06060e;display:flex;justify-content:center;font-family:monospace;padding:8px 0}
-#gw{display:flex;flex-direction:column;align-items:center}
+html,body{max-width:100%;overflow-x:hidden}
+body{background:#06060e;display:flex;justify-content:center;font-family:monospace;padding:8px 0 env(safe-area-inset-bottom);overscroll-behavior:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+#gw{display:flex;flex-direction:column;align-items:center;width:var(--game-w);max-width:100%}
 #bar{display:flex;gap:8px;margin-bottom:5px;font-size:12px;color:#888;flex-wrap:wrap;justify-content:center;align-items:center}
 #bar b{color:#FFE066}
 #hpw{display:flex;align-items:center;gap:5px}
 #hpbg{width:110px;height:10px;background:#2a0a0a;border:1px solid #5a1a1a;border-radius:3px;overflow:hidden}
 #hpf{height:100%;border-radius:2px;transition:width .2s}
 #hpt{font-size:11px;color:#FF6B6B;min-width:42px}
-#tabs{display:flex;margin-bottom:6px}
+#tabs{display:flex;margin-bottom:6px;width:100%}
 .tab{padding:5px 12px;font-size:12px;cursor:pointer;background:#111;color:#666;border:1px solid #2a2a2a}
 .tab.on{background:#1a1a2e;color:#7DF9AA;border-color:#7DF9AA}
-canvas{border:1.5px solid #2a2a2a;border-radius:4px;display:block;cursor:none;image-rendering:pixelated}
-#rp{display:none;width:500px;background:#080810;border:1.5px solid #2a2a2a;border-radius:4px;padding:12px;max-height:660px;overflow-y:auto}
+canvas{width:100%;height:auto;border:1.5px solid #2a2a2a;border-radius:4px;display:block;image-rendering:pixelated;touch-action:none}
+#rp{display:none;width:100%;background:#080810;border:1.5px solid #2a2a2a;border-radius:4px;padding:12px;max-height:660px;overflow-y:auto}
 #rp.show{display:block}
 .sec{color:#7DF9AA;font-size:11px;font-weight:500;margin:8px 0 5px;border-bottom:1px solid #1a2a1a;padding-bottom:2px}
 .g3{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:4px}
@@ -28,7 +32,7 @@ canvas{border:1.5px solid #2a2a2a;border-radius:4px;display:block;cursor:none;im
 .mc{background:#0a0a14;border:1px solid #1a1a2a;border-radius:5px;padding:8px;margin-bottom:5px}
 .mc.on{border-color:#7DF9AA}
 #toast{position:absolute;top:44px;left:50%;transform:translateX(-50%);background:#1a2a3a;color:#7DF9AA;padding:4px 11px;border-radius:4px;font-size:11px;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;z-index:10}
-#ga{position:relative;display:inline-block}
+#ga{position:relative;display:block;width:100%}
 #ctrls{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
 button{padding:5px 14px;font-size:12px;cursor:pointer;background:#0a0a14;color:#888;border:1px solid #2a2a2a;border-radius:3px;font-family:monospace}
 button:hover{border-color:#7DF9AA;color:#7DF9AA}
@@ -46,6 +50,28 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 .stabs{display:flex;margin-bottom:7px}
 .stab{padding:4px 11px;font-size:11px;cursor:pointer;background:#080810;color:#444;border:1px solid #1a1a1a}
 .stab.on{background:#0d1a0d;color:#7DF9AA;border-color:#7DF9AA}
+#mobileBlast{position:absolute;right:12px;bottom:12px;z-index:12;display:none;min-width:72px;min-height:72px;border-radius:50%;border:2px solid #FFE066;background:rgba(10,10,20,.88);color:#FFE066;font-size:12px;font-weight:bold;backdrop-filter:blur(3px);touch-action:manipulation}
+@media (pointer:fine){
+  canvas{cursor:none}
+}
+@media (max-width:640px){
+  :root{
+    --game-w:min(500px,calc(100vw - 10px));
+  }
+  body{padding:5px 0 calc(env(safe-area-inset-bottom) + 6px)}
+  #bar{gap:6px;font-size:11px;margin-bottom:6px}
+  #tabs{gap:4px}
+  .tab{flex:1;text-align:center;padding:9px 4px;font-size:12px}
+  #rp{padding:10px;max-height:none}
+  #ctrls{width:100%}
+  button{min-height:38px;padding:8px 12px;font-size:12px}
+  #msg2{font-size:11px;line-height:1.5;padding:0 8px}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(2,1fr)}
+  .card3{gap:8px}
+  .sc{width:calc(50% - 4px);min-width:140px}
+  #mobileBlast{display:block}
+}
 </style></head><body>
 <div id="gw">
 <div id="bar">
@@ -60,6 +86,7 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 </div>
 <div id="ga">
   <canvas id="c" width="500" height="640"></canvas>
+  <button id="mobileBlast" type="button" aria-label="全屏爆炸">爆炸</button>
   <div id="toast"></div>
   <div id="wb"></div>
   <div id="skipOv">
@@ -85,11 +112,12 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
   <button onclick="ST('minion')">仆从</button>
   <button onclick="ST('gear')">装备</button>
 </div>
-<div id="msg2">鼠标移动 | 自动射击 | 空格=全屏爆炸</div>
+<div id="msg2">桌面: 鼠标移动 + 空格爆炸 | 手机: 手指拖动 + 右下角爆炸</div>
 </div>
 <script>
 'use strict';
 const CV=document.getElementById('c'),CT=CV.getContext('2d'),W=500,H=640;
+const MOBILE_BLAST_BTN=document.getElementById('mobileBlast');
 
 // ═══ 持久数据 ═══
 const P={rc:0,clearedWave:0,gold:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
@@ -1120,9 +1148,34 @@ function updHUD(){
   document.getElementById('sc').textContent='Lv.'+playerLevel+' Exp:'+playerExp+'/'+expToNext;document.getElementById('hi').textContent='';document.getElementById('wv').textContent=G?G.wave:1;
 }
 
-CV.addEventListener('mousemove',e=>{if(!G)return;const r=CV.getBoundingClientRect(),sx=W/r.width,sy=H/r.height;G.mx=(e.clientX-r.left)*sx;G.my=(e.clientY-r.top)*sy;});
-CV.addEventListener('touchmove',e=>{if(!G)return;e.preventDefault();const r=CV.getBoundingClientRect(),sx=W/r.width,sy=H/r.height;G.mx=(e.touches[0].clientX-r.left)*sx;G.my=(e.touches[0].clientY-r.top)*sy;},{passive:false});
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&G&&G.state==='playing'&&RID!==null&&G.dCool<=0){doBlast();e.preventDefault();}});
+function syncPointer(clientX,clientY){
+  if(!G)return;
+  const r=CV.getBoundingClientRect(),sx=W/r.width,sy=H/r.height;
+  G.mx=(clientX-r.left)*sx;
+  G.my=(clientY-r.top)*sy;
+}
+function canUseBlast(){
+  return G&&G.state==='playing'&&RID!==null&&G.dCool<=0;
+}
+function handleBlastInput(){
+  if(canUseBlast())doBlast();
+}
+
+CV.addEventListener('mousemove',e=>{syncPointer(e.clientX,e.clientY);});
+CV.addEventListener('touchstart',e=>{
+  if(!G||!e.touches.length)return;
+  e.preventDefault();
+  syncPointer(e.touches[0].clientX,e.touches[0].clientY);
+},{passive:false});
+CV.addEventListener('touchmove',e=>{
+  if(!G||!e.touches.length)return;
+  e.preventDefault();
+  syncPointer(e.touches[0].clientX,e.touches[0].clientY);
+},{passive:false});
+CV.addEventListener('touchend',e=>{if(e.cancelable)e.preventDefault();},{passive:false});
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&canUseBlast()){doBlast();e.preventDefault();}});
+MOBILE_BLAST_BTN.addEventListener('click',handleBlastInput);
+MOBILE_BLAST_BTN.addEventListener('touchstart',e=>{e.preventDefault();handleBlastInput();},{passive:false});
 
 // ═══ 初始化：只画一帧，绝不启动 loop ═══
 initStars();drawBg(1);
