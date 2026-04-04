@@ -86,7 +86,6 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 </div>
 <div id="ga">
   <canvas id="c" width="500" height="640"></canvas>
-  <button id="mobileBlast" type="button" aria-label="全屏爆炸">爆炸</button>
   <div id="toast"></div>
   <div id="wb"></div>
   <div id="skipOv">
@@ -112,12 +111,11 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
   <button onclick="ST('minion')">仆从</button>
   <button onclick="ST('gear')">装备</button>
 </div>
-<div id="msg2">桌面: 鼠标移动 + 空格爆炸 | 手机: 手指拖动 + 右下角爆炸</div>
+<div id="msg2">桌面: 鼠标移动 | 手机: 手指拖动 | 消灭过半怪物后下一波提前进场</div>
 </div>
 <script>
 'use strict';
 const CV=document.getElementById('c'),CT=CV.getContext('2d'),W=500,H=640;
-const MOBILE_BLAST_BTN=document.getElementById('mobileBlast');
 
 // ═══ 持久数据 ═══
 const P={rc:0,clearedWave:0,gold:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
@@ -456,7 +454,6 @@ function drawPL(){
   const{x,y,inv,wf,dir}=PL;
   if(inv>0&&Math.floor(inv/3)%2===0)return;
   if(G.shield>0){CT.strokeStyle='rgba(84,160,255,.7)';CT.lineWidth=2;CT.beginPath();CT.arc(x,y,22,0,Math.PI*2);CT.stroke();}
-  if(G.dActive>0){CT.strokeStyle='rgba(255,80,80,.6)';CT.lineWidth=3;CT.beginPath();CT.arc(x,y,20+Math.sin(G.fr*.3)*4,0,Math.PI*2);CT.stroke();}
   const s=2.4,lg=Math.sin(wf*.28)*4*s,ag=Math.sin(wf*.28)*3*s,bob=Math.abs(Math.sin(wf*.28))*s*.5,by=y-bob;
   CT.fillStyle='#1a1a4a';CT.fillRect(Math.round(x-7),Math.round(by+10+lg*dir),6,9);CT.fillRect(Math.round(x+1),Math.round(by+10-lg*dir),6,9);
   CT.fillStyle='#2a1a0a';CT.fillRect(Math.round(x-8),Math.round(by+19+lg*dir),8,4);CT.fillRect(Math.round(x),Math.round(by+19-lg*dir),8,4);
@@ -491,18 +488,18 @@ const ET=[
 ];
 function wDiff(w){return 1+Math.pow(w-1,.65)*.6;}
 function eM(w){return {hp:1+w*.18,spd:1+w*.08,dmg:1+w*.35+Math.pow(Math.max(0,w-1),1.2)*.14,cn:1+w*.1};}
-function buildQ(){
-  const q=[],em=eM(G.wave);
-  if(G.wave%5===0){
+function buildQ(waveNo){
+  const q=[],em=eM(waveNo);
+  if(waveNo%5===0){
     const b={...ET[4]};
     // BOSS血量随波数快速增加
-    b.hp=Math.round(b.hp*Math.pow(1.8,Math.floor(G.wave/5))*em.hp);
-    b.maxHp=b.hp;b.spd*=em.spd;b.bS*=Math.pow(1.06,G.wave);b.cn=Math.round(b.cn*em.cn);
+    b.hp=Math.round(b.hp*Math.pow(1.8,Math.floor(waveNo/5))*em.hp);
+    b.maxHp=b.hp;b.spd*=em.spd;b.bS*=Math.pow(1.06,waveNo);b.cn=Math.round(b.cn*em.cn);
     q.push(b);return q;
   }
-  const diff=wDiff(G.wave),avail=Math.min(4,1+Math.floor((G.wave-1)/2)),pool=ET.slice(0,avail);
+  const diff=wDiff(waveNo),avail=Math.min(4,1+Math.floor((waveNo-1)/2)),pool=ET.slice(0,avail);
   // 敌人数量随波次缓慢增加：基数 7 + 波数*3.5
-  const base=Math.round(7+G.wave*3.5);
+  const base=Math.round(7+waveNo*3.5);
   const total=Math.round(base*diff*.6);
   for(let i=0;i<total;i++){
     const t={...pool[Math.floor(Math.random()*pool.length)]};
@@ -515,6 +512,27 @@ function buildQ(){
     q.push(t);
   }
   return q.sort(()=>Math.random()-.5);
+}
+
+function aliveInWave(waveNo){
+  return enemies.filter(e=>e.waveNo===waveNo).length+wQ.filter(e=>e.waveNo===waveNo).length;
+}
+
+function startWave(waveNo){
+  const q=buildQ(waveNo).map(e=>({...e,waveNo}));
+  wQ.push(...q);
+  G.wave=waveNo;
+  G.wTotal+=q.length;
+  G.wLeft+=q.length;
+  G.waveSizes[waveNo]=q.length;
+  G.wState='spawning';
+  spT=Math.min(spT||999,waveNo%5===0?12:5);
+  G.laserCool=0;
+  G.laserActive=false;
+  G.laserTids=[];
+  G.laserDmgCools=[];
+  showWB('波次 '+waveNo+(waveNo%5===0?' BOSS！':''));
+  updHUD();
 }
 
 function spE(t){
@@ -669,7 +687,7 @@ function tick(ts){
   const dx0=G.mx-PL.x,dy0=G.my-PL.y;
   if(Math.abs(dx0)>1||Math.abs(dy0)>1){PL.wf+=dt*2;PL.dir=dx0>=0?1:-1;}
   PL.x=Math.max(14,Math.min(W-14,PL.x));PL.y=Math.max(20,Math.min(H-20,PL.y));
-  if(PL.inv>0)PL.inv-=dt;if(G.dActive>0)G.dActive-=dt;if(G.dCool>0)G.dCool-=dt;
+  if(PL.inv>0)PL.inv-=dt;
 
   const wm=wMods(),wb=wsB();
 
@@ -866,7 +884,7 @@ function tick(ts){
   });
 
   // 敌方子弹碰撞
-  if(PL.inv<=0&&G.dActive<=0){
+  if(PL.inv<=0){
     eB=eB.filter(b=>{
       b.x+=b.vx*dt;b.y+=b.vy*dt;
       if(b.x<-10||b.x>W+10||b.y<-10||b.y>H+10)return false;
@@ -884,26 +902,26 @@ function tick(ts){
   // 波次管理
   if(G.wState==='spawning'){
     spT-=dt;
-    if(spT<=0&&wQ.length>0){const bs=G.wave%5===0?1:Math.min(4+Math.floor(G.wave/4),wQ.length);for(let i=0;i<bs&&wQ.length>0;i++)spE(wQ.shift());spT=G.wave%5===0?80:Math.max(6,28-G.wave*1.2);}
+    if(spT<=0&&wQ.length>0){const bs=G.wave%5===0?1:Math.min(6+Math.floor(G.wave/3),wQ.length);for(let i=0;i<bs&&wQ.length>0;i++)spE(wQ.shift());spT=G.wave%5===0?40:Math.max(3,12-G.wave*.35);}
     if(wQ.length===0)G.wState='waiting';
   }
-  if(G.wState==='waiting'&&enemies.length===0&&G.wLeft<=0){
+  if(G.triggerWave>0&&G.triggerWave%5!==0&&G.waveSizes[G.triggerWave]&&G.maxWaveStarted===G.triggerWave&&aliveInWave(G.triggerWave)<=Math.floor(G.waveSizes[G.triggerWave]/2)){
+    G.maxWaveStarted=G.triggerWave+1;
+    startWave(G.maxWaveStarted);
+    G.triggerWave=G.maxWaveStarted;
+  }
+  if((G.wState==='waiting'||G.wState==='spawning')&&enemies.length===0&&G.wLeft<=0&&wQ.length===0){
     if(SK.regen>0)G.hp=Math.min(getMxHp(),G.hp+SK.regen);
-    const bon=Math.round(G.wave*130*wDiff(G.wave));
-    showWB('波次 '+G.wave+' 清除！');G.wave++;updHUD();G.wState='pause';G.wPause=50;
+    G.waveSizes={};
+    showWB('波次 '+G.wave+' 清除！');updHUD();G.wState='pause';G.wPause=18;
   }
   if(G.wState==='pause'){
     G.wPause-=dt;
     if(G.wPause<=0){
-      const q=buildQ();
-      wQ=q;G.wTotal=q.length;G.wLeft=q.length;spT=18;
-      G.wState='spawning';
-      // 开始新的一波时立刻重置激光，保证第一目标可渲染
-      G.laserCool = 0;
-      G.laserActive = false;
-      G.laserTids = [];
-      G.laserDmgCools = [];
-      showWB('波次 '+G.wave+(G.wave%5===0?' BOSS！':''));
+      G.wTotal=0;G.wLeft=0;
+      G.maxWaveStarted=G.wave+1;
+      G.triggerWave=G.maxWaveStarted;
+      startWave(G.maxWaveStarted);
     }
   }
 
@@ -950,9 +968,6 @@ function tick(ts){
   CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(6,6,W-12,5);
   CT.fillStyle=G.wave%5===0?'hsl('+(G.fr*3%360)+',80%,55%)':'#378ADD';CT.fillRect(6,6,Math.round((W-12)*wP),5);
   CT.fillStyle='rgba(150,150,255,.5)';CT.font='9px monospace';CT.textAlign='right';CT.fillText('波次'+G.wave+'('+wD+'/'+G.wTotal+')',W-6,20);
-  const p2=Math.max(0,1-G.dCool/120);
-  CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(6,H-10,60,4);CT.fillStyle=G.dCool<=0?'#FF6B6B':'#3a1a1a';CT.fillRect(6,H-10,Math.round(60*p2),4);
-  CT.fillStyle=G.dCool<=0?'#FF6B6B':'#333';CT.font='9px monospace';CT.textAlign='left';CT.fillText('[空格]爆炸',68,H-7);
   if(wm.lm){const lp=Math.max(0,1-G.laserCool/wm.lc);CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(6,H-22,60,4);CT.fillStyle=G.laserCool<=0?'#7DF9AA':'#1a3a1a';CT.fillRect(6,H-22,Math.round(60*lp),4);}
   let sy=H-32;Object.entries(AS).forEach(([sn,sd])=>{if(SA(sn)){CT.fillStyle=sd.c+'bb';CT.font='9px monospace';CT.textAlign='right';CT.fillText('+'+sn,W-6,sy);sy-=12;}});
   CT.strokeStyle='rgba(125,249,170,.4)';CT.lineWidth=1;CT.beginPath();CT.arc(G.mx,G.my,6,0,Math.PI*2);CT.stroke();CT.beginPath();CT.moveTo(G.mx-10,G.my);CT.lineTo(G.mx+10,G.my);CT.stroke();CT.beginPath();CT.moveTo(G.mx,G.my-10);CT.lineTo(G.mx,G.my+10);CT.stroke();
@@ -1001,12 +1016,6 @@ function doRebirth(gain){
   ST('game');
 }
 
-function doBlast(){
-  eB=[];G.dCool=120;G.dActive=25;
-  for(let i=0;i<35;i++){const a=Math.random()*Math.PI*2,r=Math.random()*W*.65;parts.push({x:W/2+Math.cos(a)*r,y:H/2+Math.sin(a)*r,vx:(Math.random()-.5)*9,vy:(Math.random()-.5)*9,life:1.3,color:'#FF4444',sz:4+Math.random()*6,glow:true,txt:null});}
-  showToast('全屏爆炸！');
-}
-
 function giveUp(){
   if(!G||G.state!=='playing'){showToast('非战斗状态');return;}
   showToast('战斗放弃！');
@@ -1018,7 +1027,7 @@ function runSkip(target,doneCB){
   const el=document.getElementById('skipOv');el.className='show';
   let w=1,tG=0,tS=0;const steps=Math.max(1,target-1);
   const iv=setInterval(()=>{
-    if(w>=steps){clearInterval(iv);document.getElementById('skipProg').style.width='100%';setTimeout(()=>{el.className='';G.wave=target;G.wState='pause';G.wPause=40;if(doneCB)doneCB();},350);return;}
+    if(w>=steps){clearInterval(iv);document.getElementById('skipProg').style.width='100%';setTimeout(()=>{el.className='';G.wave=target-1;G.wState='pause';G.wPause=8;if(doneCB)doneCB();},350);return;}
     w++;document.getElementById('skipProg').style.width=Math.round((w-1)/steps*100)+'%';
     document.getElementById('skipTxt').textContent='跳关: 波次 '+w+' / '+target;
     const c=Math.round(w*12),s=Math.round(w*32);tG+=c;tS+=s;P.gold+=c;
@@ -1037,7 +1046,7 @@ function startGame(){
   SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0};
   skillPickCount=0;
   skillCaps={ms:0,pr:0,crit:0,mag:0};
-  G={state:'playing',score:0,wave:1,hp:0,maxHp:0,shield:0,fr:0,lt:0,mx:W/2,my:H-70,sCool:0,dCool:0,dActive:0,wState:'pause',wPause:40,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[]};
+  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:0,fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0};
   G.maxHp=getMxHp();G.hp=G.maxHp;
   cZ=[];wQ=[];spT=0;
   PL={x:W/2,y:H-70,inv:0,wf:0,dir:1};
@@ -1065,15 +1074,16 @@ function startGame(){
       }
       const cardCount = playerLevel; // 获得技能卡牌次数等于等级
       if(cardCount>0){
-        showCards(cardCount,'跳关奖励（等级 '+playerLevel+'）',()=>{
-          showWB('从波次 '+target+' 开始！');
-        });
-      }else{showWB('从波次 '+target+' 开始！');}
+        showCards(cardCount,'跳关奖励（等级 '+playerLevel+'）',()=>{});
+      }
+      G.wave=target-1;
+      G.maxWaveStarted=G.wave;
+      G.triggerWave=G.wave;
+      G.wState='pause';
+      G.wPause=8;
     });
   }else{
-    showCards(1,'游戏开始奖励',()=>{
-      showWB('波次 1 开始！');
-    });
+    showCards(1,'游戏开始奖励',()=>{});
   }
 }
 
@@ -1240,12 +1250,6 @@ function syncPointer(clientX,clientY){
   G.mx=(clientX-r.left)*sx;
   G.my=(clientY-r.top)*sy;
 }
-function canUseBlast(){
-  return G&&G.state==='playing'&&RID!==null&&G.dCool<=0;
-}
-function handleBlastInput(){
-  if(canUseBlast())doBlast();
-}
 
 CV.addEventListener('mousemove',e=>{syncPointer(e.clientX,e.clientY);});
 CV.addEventListener('touchstart',e=>{
@@ -1259,15 +1263,12 @@ CV.addEventListener('touchmove',e=>{
   syncPointer(e.touches[0].clientX,e.touches[0].clientY);
 },{passive:false});
 CV.addEventListener('touchend',e=>{if(e.cancelable)e.preventDefault();},{passive:false});
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&canUseBlast()){doBlast();e.preventDefault();}});
-MOBILE_BLAST_BTN.addEventListener('click',handleBlastInput);
-MOBILE_BLAST_BTN.addEventListener('touchstart',e=>{e.preventDefault();handleBlastInput();},{passive:false});
 
 // ═══ 初始化：只画一帧，绝不启动 loop ═══
 initStars();drawBg(1);
 CT.fillStyle='#7DF9AA';CT.font='bold 20px monospace';CT.textAlign='center';CT.fillText('像素射击战 v6',W/2,H/2-32);
 CT.fillStyle='#555';CT.font='12px monospace';CT.fillText('技能卡牌 | 开局无初始武器 | 转生币抽卡',W/2,H/2);
-CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('空格爆炸 | 金币累计 | BOSS后选技能',W/2,H/2+22);
+CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('金币拾取 | 半波连刷 | BOSS后选技能',W/2,H/2+22);
 updHUD();
 
 // 初始化背包（开局不再赠送武器）
