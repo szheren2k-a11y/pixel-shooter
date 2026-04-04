@@ -481,13 +481,13 @@ function bossStageFactor(w){
   return Math.pow(10,Math.floor((w-1)/5));
 }
 function wDiff(w){return 1+Math.pow(w-1,.65)*.6;}
-function eM(w){return {hp:1+w*.18,spd:1+w*.08,dmg:1+w*.35+Math.pow(Math.max(0,w-1),1.2)*.14,cn:1+w*.1};}
+function eM(w){return {hp:1+w*.18,dmg:1+w*.35+Math.pow(Math.max(0,w-1),1.2)*.14,cn:1+w*.1};}
 function buildQ(waveNo){
   const q=[],em=eM(waveNo),bossFactor=bossStageFactor(waveNo);
   if(waveNo%5===0){
     const b={...ET[4]};
     b.hp=Math.round(b.hp*Math.pow(1.8,Math.floor(waveNo/5))*em.hp*bossFactor);
-    b.maxHp=b.hp;b.spd*=em.spd*bossFactor;b.bS*=Math.pow(1.06,waveNo)*bossFactor;b.cn=Math.round(b.cn*em.cn*bossFactor);b.exp=Math.round(b.exp*bossFactor);
+    b.maxHp=b.hp;b.cn=Math.round(b.cn*em.cn*bossFactor);b.exp=Math.round(b.exp*bossFactor);
     q.push(b);return q;
   }
   const diff=wDiff(waveNo),avail=Math.min(4,1+Math.floor((waveNo-1)/2)),pool=ET.slice(0,avail);
@@ -499,8 +499,6 @@ function buildQ(waveNo){
     // 属性大幅度提升
     t.hp=Math.round(t.hp*diff*em.hp*bossFactor);
     t.maxHp=t.hp;
-    t.spd*=em.spd*bossFactor;
-    t.bS*=Math.pow(1.05,waveNo)*bossFactor;
     t.cn=Math.round(t.cn*em.cn*bossFactor);
     t.exp=Math.round(t.exp*bossFactor);
     q.push(t);
@@ -653,6 +651,13 @@ function drawDrop(d){
     CT.fillStyle='#5a4300';CT.font='bold 9px monospace';CT.textAlign='center';CT.fillText('$',d.x,d.y+3+p*.2);
     return;
   }
+  if(d.kind==='effect'){
+    const p=Math.sin(G.fr*.18+d.phase)*2;
+    CT.fillStyle=d.color+'22';CT.beginPath();CT.arc(d.x,d.y+p*.2,11,0,Math.PI*2);CT.fill();
+    CT.strokeStyle=d.color;CT.lineWidth=1.5;CT.beginPath();CT.arc(d.x,d.y+p*.2,8,0,Math.PI*2);CT.stroke();
+    CT.fillStyle=d.color;CT.font='bold 8px monospace';CT.textAlign='center';CT.fillText(d.icon,d.x,d.y+3+p*.2);
+    return;
+  }
   const rc=RAR[d.rarity].c,p=Math.sin(G.fr*.15+d.phase)*2;
   CT.fillStyle=rc+'33';CT.fillRect(Math.round(d.x-10),Math.round(d.y-10+p*.1),20,20);
   CT.strokeStyle=rc;CT.lineWidth=1.5;CT.strokeRect(Math.round(d.x-10),Math.round(d.y-10+p*.1),20,20);
@@ -661,6 +666,33 @@ function drawDrop(d){
 
 function makeCoinDrop(x,y,value){
   return{kind:'coin',x,y,value,phase:Math.random()*Math.PI*2,vy:.9};
+}
+
+const EFFECT_POOL=[
+  {kind:'expBoost',label:'经验x2',color:'#7DF9AA',icon:'E'},
+  {kind:'goldBoost',label:'金币x2',color:'#FFE066',icon:'G'},
+  {kind:'shield',label:'+1护盾',color:'#54A0FF',icon:'S'},
+  {kind:'clearBullets',label:'清弹',color:'#FF6B6B',icon:'C'},
+];
+function makeEffectDrop(x,y){
+  const fx=EFFECT_POOL[Math.floor(Math.random()*EFFECT_POOL.length)];
+  return{kind:'effect',effect:fx.kind,label:fx.label,color:fx.color,icon:fx.icon,x,y,phase:Math.random()*Math.PI*2,vy:.85};
+}
+function applyEffectDrop(d){
+  if(d.effect==='expBoost'){
+    G.expBoost=600;
+    showToast('获得临时效果: 10秒经验x2');
+  }else if(d.effect==='goldBoost'){
+    G.goldBoost=600;
+    showToast('获得临时效果: 10秒金币x2');
+  }else if(d.effect==='shield'){
+    G.shield+=1;
+    showToast('获得临时效果: +1护盾');
+  }else if(d.effect==='clearBullets'){
+    const cleared=eB.length;
+    eB=[];
+    showToast('获得临时效果: 清除子弹'+(cleared>0?' x'+cleared:''));
+  }
 }
 
 // ═══ 主游戏循环 ═══
@@ -672,6 +704,8 @@ function tick(ts){
   if(!G||G.state!=='playing')return;// 非playing态只是画面暂停，不做逻辑
 
   const dt=Math.min((ts-G.lt)/16.67,3);G.lt=ts;G.fr++;
+  if(G.expBoost>0)G.expBoost=Math.max(0,G.expBoost-dt);
+  if(G.goldBoost>0)G.goldBoost=Math.max(0,G.goldBoost-dt);
 
   // 回血套
   if(SA('回血套')){G.sRT+=dt;if(G.sRT>300){G.sRT=0;G.hp=Math.min(G.maxHp,G.hp+Math.round(G.maxHp*.03));}}
@@ -837,17 +871,18 @@ function tick(ts){
   function killE(e,idx){
     spP(e.x,e.y,e.col,e.shape==='boss'?40:14);
     if(SA('爆炸套'))enemies.forEach(oe=>{if(oe.id!==e.id&&Math.hypot(oe.x-e.x,oe.y-e.y)<70){oe.hp-=getAtk()*3;spP(oe.x,oe.y,'#fb923c',5);}});
-    playerExp += e.exp;
-    drops.push(makeCoinDrop(e.x,e.y,Math.round(e.cn*getCB())));G.wLeft--;
+    playerExp += Math.round(e.exp*(G.expBoost>0?2:1));
+    drops.push(makeCoinDrop(e.x,e.y,Math.round(e.cn*getCB()*(G.goldBoost>0?2:1))));G.wLeft--;
     if(e.shape==='boss'){
       P.clearedWave=Math.max(P.clearedWave,G.wave);
       for(let i=0;i<5;i++){const g=rollGear(0,G.wave,true);drops.push({...g,x:e.x+(Math.random()-.5)*60,y:e.y+(Math.random()-.5)*30,phase:Math.random()*Math.PI*2,vy:.8});}
-      for(let i=0;i<4;i++)drops.push(makeCoinDrop(e.x+(Math.random()-.5)*36,e.y+(Math.random()-.5)*24,Math.max(1,Math.round(e.cn*getCB()*.35))));
+      for(let i=0;i<4;i++)drops.push(makeCoinDrop(e.x+(Math.random()-.5)*36,e.y+(Math.random()-.5)*24,Math.max(1,Math.round(e.cn*getCB()*.35*(G.goldBoost>0?2:1)))));
       if(SA('护盾套'))G.shield+=3;
       showToast('BOSS倒下！5件装备掉落');
     }else if(Math.random()<.022+G.wave*.001){
       drops.push({...rollGear(0,G.wave,false),x:e.x,y:e.y,phase:Math.random()*Math.PI*2,vy:1});
     }
+    if(Math.random()<0.035)drops.push(makeEffectDrop(e.x+(Math.random()-.5)*18,e.y+(Math.random()-.5)*18));
     enemies.splice(idx,1);
   }
 
@@ -869,6 +904,12 @@ function tick(ts){
         P.gold+=d.value;
         showToast('+'+d.value+' 金币');
         spP(d.x,d.y,'#FFE066',8);
+        updHUD();
+        return false;
+      }
+      if(d.kind==='effect'){
+        applyEffectDrop(d);
+        spP(d.x,d.y,d.color,10);
         updHUD();
         return false;
       }
@@ -896,7 +937,7 @@ function tick(ts){
   // 波次管理
   if(G.wState==='spawning'){
     spT-=dt;
-    if(spT<=0&&wQ.length>0){const bs=G.wave%5===0?1:Math.min(6+Math.floor(G.wave/3),wQ.length);for(let i=0;i<bs&&wQ.length>0;i++)spE(wQ.shift());spT=G.wave%5===0?40:Math.max(3,12-G.wave*.35);}
+    if(spT<=0&&wQ.length>0){const bs=G.wave%5===0?1:Math.min(6,wQ.length);for(let i=0;i<bs&&wQ.length>0;i++)spE(wQ.shift());spT=G.wave%5===0?40:12;}
     if(wQ.length===0)G.wState='waiting';
   }
   if(G.triggerWave>0&&G.triggerWave%5!==0&&G.waveSizes[G.triggerWave]&&G.maxWaveStarted===G.triggerWave&&aliveInWave(G.triggerWave)<=Math.floor(G.waveSizes[G.triggerWave]/2)){
@@ -963,6 +1004,8 @@ function tick(ts){
   CT.fillStyle=G.wave%5===0?'hsl('+(G.fr*3%360)+',80%,55%)':'#378ADD';CT.fillRect(6,6,Math.round((W-12)*wP),5);
   CT.fillStyle='rgba(150,150,255,.5)';CT.font='9px monospace';CT.textAlign='right';CT.fillText('波次'+G.wave+'('+wD+'/'+G.wTotal+')',W-6,20);
   if(wm.lm){const lp=Math.max(0,1-G.laserCool/wm.lc);CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(6,H-22,60,4);CT.fillStyle=G.laserCool<=0?'#7DF9AA':'#1a3a1a';CT.fillRect(6,H-22,Math.round(60*lp),4);}
+  if(G.expBoost>0){CT.fillStyle='#7DF9AA';CT.font='9px monospace';CT.textAlign='left';CT.fillText('经验x2 '+(G.expBoost/60).toFixed(1)+'s',6,32);}
+  if(G.goldBoost>0){CT.fillStyle='#FFE066';CT.font='9px monospace';CT.textAlign='left';CT.fillText('金币x2 '+(G.goldBoost/60).toFixed(1)+'s',6,44);}
   let sy=H-32;Object.entries(AS).forEach(([sn,sd])=>{if(SA(sn)){CT.fillStyle=sd.c+'bb';CT.font='9px monospace';CT.textAlign='right';CT.fillText('+'+sn,W-6,sy);sy-=12;}});
   CT.strokeStyle='rgba(125,249,170,.4)';CT.lineWidth=1;CT.beginPath();CT.arc(G.mx,G.my,6,0,Math.PI*2);CT.stroke();CT.beginPath();CT.moveTo(G.mx-10,G.my);CT.lineTo(G.mx+10,G.my);CT.stroke();CT.beginPath();CT.moveTo(G.mx,G.my-10);CT.lineTo(G.mx,G.my+10);CT.stroke();
   if(G.fr%28===0)updHUD();
@@ -1032,7 +1075,7 @@ function startGame(){
   document.getElementById('cardOv').className='';
   document.getElementById('skipOv').className='';
 
-  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:getBaseShield(),fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0};
+  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:getBaseShield(),fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0,expBoost:0,goldBoost:0};
   G.maxHp=getMxHp();G.hp=G.maxHp;
   cZ=[];wQ=[];spT=0;
   PL={x:W/2,y:H-70,inv:0,wf:0,dir:1};
