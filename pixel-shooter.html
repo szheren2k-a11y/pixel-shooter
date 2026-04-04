@@ -225,7 +225,6 @@ function wsB(){
 function wMods(){
   const w=eq['武器'];
   if(!w||!w.sub){
-    // 默认速射效果
     return{rm:1,dm:1,es:0,cm:false,cr:0,lm:false,lc:120};
   }
   const f=w.rarity/4,t=w.sub;
@@ -233,16 +232,13 @@ function wMods(){
   if(t==='步枪')return{rm:1+f*0.5,dm:1-f*0.5,es:0,cm:false,cr:0,lm:false,lc:120};
   if(t==='散弹')return{rm:1,dm:1,es:Math.floor(f*5),cm:false,cr:0,lm:false,lc:120};
   if(t==='火炮')return{rm:2.8,dm:1,es:0,cm:true,cr:W*(0.1+f*0.4),lm:false,lc:120};
-  // 激光：冷却时间 = 基础值 - (颜色等级 * 降低值) - 射速加成 - 激光套装加成
-  // 颜色越好（rarity越高1=绿到4=橙），冷却越短；射速加成最多减少冷却，最短为0
   if(t==='激光'){
-    const baseCool=120; // 基础冷却时间（帧，2秒）
-    const rarityReduce=w.rarity*50; // 每等级品质减少50帧
-    const speedReduce=SK.fr*15; // 技能射速等级带来的冷却缩减
-    const laserSuitReduce=wsN('激光套')>=4?120:wsN('激光套')>=2?60:0; // 激光套装减少
+    const baseCool=120;
+    const rarityReduce=w.rarity*50;
+    const speedReduce=SK.fr*15;
+    const laserSuitReduce=wsN('激光套')>=4?120:wsN('激光套')>=2?60:0;
     return{rm:1,dm:1,es:0,cm:false,cr:0,lm:true,lc:Math.max(0,baseCool-rarityReduce-speedReduce-laserSuitReduce)};
   }
-  // 如果未知子类型，也用默认速射
   return{rm:1,dm:1,es:0,cm:false,cr:0,lm:false,lc:120};
 }
 
@@ -260,7 +256,6 @@ function getCB(){return 1+gS('金币')/80;}
 // ═══ 装备生成 ═══
 function rollGear(minR,wave,boss,forceType){
   minR=minR||0;wave=wave||1;boss=!!boss;
-  // boss掉落：无普通，高品质概率高
   const w=boss?[0,10,25,38,27]:[65,20,9,4,2];
   let r=Math.random()*w.reduce((a,b)=>a+b),ri=0;
   for(let i=0;i<5;i++){r-=w[i];if(r<=0){ri=i;break;}}
@@ -280,16 +275,13 @@ function rollGear(minR,wave,boss,forceType){
   return{name:pfx+nms[type][Math.floor(Math.random()*nms[type].length)],type,rarity:ri,stats:{...stats},baseStats:{...stats},lv:0,suit,wsuit,sub,id:Math.random()};
 }
 
-// 初始化装备与背包（不再赠送初始武器）
 function initWeapons(){
   eq={武器:null,护甲:null,头盔:null,饰品:null};
   bag=[];
 }
 
 function autoProc(w){
-  // 自动卖出普通品质
   bag=bag.filter(g=>{if(autoSellMinRarity>=0&&g.rarity<=autoSellMinRarity){P.gold+=(g.rarity===0?3:5+g.rarity*12);return false;}return true;});
-  // 3件合成（保证类型一致）
   for(const t of GT)for(let ri=0;ri<4;ri++){
     const sm=bag.filter(g=>g.type===t&&g.rarity===ri);
     if(sm.length>=3){sm.slice(0,3).forEach(g=>bag=bag.filter(x=>x.id!==g.id));bag.push(rollGear(ri+1,w,false,t));showToast('合成! '+RAR[ri+1].n);break;}
@@ -465,6 +457,11 @@ function drawPL(){
   const{x,y,inv,wf,dir}=PL;
   if(inv>0&&Math.floor(inv/3)%2===0)return;
   if(G.shield>0){CT.strokeStyle='rgba(84,160,255,.7)';CT.lineWidth=2;CT.beginPath();CT.arc(x,y,22,0,Math.PI*2);CT.stroke();}
+  // 超级磁铁光环
+  if(G.superMagnet>0){
+    CT.strokeStyle='rgba(192,132,252,'+(.4+Math.sin(G.fr*.1)*.2)+')';CT.lineWidth=1.5;CT.beginPath();CT.arc(x,y,600/Math.PI,0,Math.PI*2);CT.stroke();
+    CT.strokeStyle='rgba(192,132,252,.15)';CT.lineWidth=1;CT.beginPath();CT.arc(x,y,600/Math.PI*.7,0,Math.PI*2);CT.stroke();
+  }
   const s=2.4,lg=Math.sin(wf*.28)*4*s,ag=Math.sin(wf*.28)*3*s,bob=Math.abs(Math.sin(wf*.28))*s*.5,by=y-bob;
   CT.fillStyle='#1a1a4a';CT.fillRect(Math.round(x-7),Math.round(by+10+lg*dir),6,9);CT.fillRect(Math.round(x+1),Math.round(by+10-lg*dir),6,9);
   CT.fillStyle='#2a1a0a';CT.fillRect(Math.round(x-8),Math.round(by+19+lg*dir),8,4);CT.fillRect(Math.round(x),Math.round(by+19-lg*dir),8,4);
@@ -511,12 +508,10 @@ function buildQ(waveNo){
     q.push(b);return q;
   }
   const diff=wDiff(waveNo),avail=Math.min(4,1+Math.floor((waveNo-1)/2)),pool=ET.slice(0,avail);
-  // 敌人数量随波次缓慢增加：基数 7 + 波数*3.5
   const base=Math.round(7+waveNo*3.5);
   const total=Math.round(base*diff*.6);
   for(let i=0;i<total;i++){
     const t={...pool[Math.floor(Math.random()*pool.length)]};
-    // 属性大幅度提升
     t.hp=Math.round(t.hp*diff*em.hp*bossFactor);
     t.maxHp=t.hp;
     t.cn=Math.round(t.cn*em.cn*bossFactor);
@@ -635,7 +630,6 @@ function drawE(e){
     CT.fillStyle='#a5f3fc';for(let i=-2;i<=2;i++){CT.beginPath();CT.arc(x+i*(w*.16),y+h*.08+sway,1.8,0,Math.PI*2);CT.fill();}
     if(hr<1){CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(bx,Math.round(y+h/2+2),w,3);CT.fillStyle='#7DF9AA';CT.fillRect(bx,Math.round(y+h/2+2),Math.round(w*hr),3);}
   }else{
-    // 保底分支
     const rx=w/2,ry=h/2,cut=Math.min(rx,ry)*0.35;
     CT.fillStyle=col;
     CT.beginPath();
@@ -688,11 +682,12 @@ function makeCoinDrop(x,y,value){
   return{kind:'coin',x,y,value,phase:Math.random()*Math.PI*2,vy:.9};
 }
 
+// 效果掉落池：移除清弹，新增超级磁铁
 const EFFECT_POOL=[
   {kind:'expBoost',label:'经验x2',color:'#7DF9AA',icon:'E'},
   {kind:'goldBoost',label:'金币x2',color:'#FFE066',icon:'G'},
   {kind:'shield',label:'+1护盾',color:'#54A0FF',icon:'S'},
-  {kind:'clearBullets',label:'清弹',color:'#FF6B6B',icon:'C'},
+  {kind:'superMagnet',label:'超级磁铁',color:'#c084fc',icon:'M'},
 ];
 function makeEffectDrop(x,y){
   const fx=EFFECT_POOL[Math.floor(Math.random()*EFFECT_POOL.length)];
@@ -708,10 +703,11 @@ function applyEffectDrop(d){
   }else if(d.effect==='shield'){
     G.shield+=1;
     showToast('获得临时效果: +1护盾');
-  }else if(d.effect==='clearBullets'){
-    const cleared=eB.length;
-    eB=[];
-    showToast('获得临时效果: 清除子弹'+(cleared>0?' x'+cleared:''));
+  }else if(d.effect==='superMagnet'){
+    G.superMagnet=600;
+    // 视觉爆炸效果
+    for(let i=0;i<24;i++){const a=i/24*Math.PI*2;parts.push({x:PL.x+Math.cos(a)*30,y:PL.y+Math.sin(a)*30,vx:Math.cos(a)*4,vy:Math.sin(a)*4,life:1.2,color:'#c084fc',sz:3,glow:true,txt:null});}
+    showToast('超级磁铁！10秒全屏吸附！');
   }
 }
 function damageEnemy(enemy,amount){
@@ -721,16 +717,15 @@ function damageEnemy(enemy,amount){
 }
 
 // ═══ 主游戏循环 ═══
-// 关键：RID 在 tick 顶部续帧，这样 stopLoop 后下一帧不会再调
 function tick(ts){
-  // 立刻续帧（在任何 return 之前）
   RID=requestAnimationFrame(tick);
 
-  if(!G||G.state!=='playing')return;// 非playing态只是画面暂停，不做逻辑
+  if(!G||G.state!=='playing')return;
 
   const dt=Math.min((ts-G.lt)/16.67,3);G.lt=ts;G.fr++;
   if(G.expBoost>0)G.expBoost=Math.max(0,G.expBoost-dt);
   if(G.goldBoost>0)G.goldBoost=Math.max(0,G.goldBoost-dt);
+  if(G.superMagnet>0)G.superMagnet=Math.max(0,G.superMagnet-dt);
 
   // 回血套
   if(SA('回血套')){G.sRT+=dt;if(G.sRT>300){G.sRT=0;G.hp=Math.min(G.maxHp,G.hp+Math.round(G.maxHp*.03));}}
@@ -749,32 +744,26 @@ function tick(ts){
     }
   }
 
-  // 激光：移动速度0.001，持续时间5秒，冷却时间2秒（可套装减少）
+  // 激光逻辑
   if(wm.lm){
     G.laserCool-=dt;
-    // 冷却完毕或激光不活跃，尝试激活新一轮激光
     if(G.laserCool<=0&&!G.laserActive){
       G.laserActive=true;
-      G.laserTimer=0; // 当前激光持续时间
-      G.laserDmgTimer=0; // 伤害间隔计时器
+      G.laserTimer=0;
+      G.laserDmgTimer=0;
       const laserCount=Math.min(getMS(),enemies.length);
-      // 从敌人中选择最多 laserCount 个目标
       G.laserTids=[...enemies].sort((a,b)=>a.y-b.y).slice(0,laserCount).map(e=>e.id);
     }
-    // 激光活跃中
     if(G.laserActive){
       G.laserTimer+=dt;
       G.laserDmgTimer+=dt;
-      const dmgInterval=getFireI(); // 伤害间隔
-      const maxDuration=300; // 激光持续时间（帧，5秒）
+      const dmgInterval=getFireI();
+      const maxDuration=300;
       
       if(G.laserDmgTimer>=dmgInterval){
         G.laserDmgTimer-=dmgInterval;
         G.laserTids.forEach((tid,idx)=>{
-          // 找当前目标
           let t=enemies.find(e=>e.id===tid);
-          
-          // 如果目标死了或不存在，自动切换到下一个未被选中的敌人
           if(!t){
             const availableEnemies=enemies.filter(e=>!G.laserTids.includes(e.id));
             if(availableEnemies.length>0){
@@ -784,11 +773,9 @@ function tick(ts){
               G.laserTids[idx]=null;
             }
           }
-          
           if(t){
-            // 对目标造成伤害
             const dmg=getAtk()*2;
-            t.hp=Math.max(0,t.hp-dmg); // 防止血量为负
+            t.hp=Math.max(0,t.hp-dmg);
             spP(t.x,t.y,eq['武器']?RAR[eq['武器'].rarity].c:'#7DF9AA',2);
             if(t.hp===0){
               const eidx=enemies.indexOf(t);
@@ -799,23 +786,21 @@ function tick(ts){
         });
       }
       
-      // 移除已死亡的目标
       G.laserTids=G.laserTids.filter(id=>id!==null);
       
-      // 激光持续时间结束或没有目标了，结束这一轮激光
       if(G.laserTimer>=maxDuration||G.laserTids.length===0){
         G.laserActive=false;
-        G.laserCool=wm.lc; // 恢复冷却计时器
+        G.laserCool=wm.lc;
       }
     }
   }else{
     G.laserActive=false;
   }
 
-  // 射击：所有类型子弹统一逻辑
+  // 射击
   if(G.sCool<=0&&enemies.length>0&&!wm.lm){
     const wc=eq['武器']?RAR[eq['武器'].rarity].c:'#7DF9AA';
-    const a=11; // 基础移动速度
+    const a=11;
     const n=getMS();
     const speedBonus = Math.max(0, 10 - getFireI());
     let bulletSpeed = a + speedBonus + (wb.sp||0)*1.2;
@@ -824,7 +809,6 @@ function tick(ts){
     let explosionDmg = 0;
 
     if(wm.cm){
-      // 火炮：移动速度 a*0.75，爆炸伤害 0.5*人物伤害
       bulletSpeed = a * 0.75 + speedBonus + (wb.sp||0)*1.4;
       dmg = getAtk() * 3;
       isCannon = true;
@@ -837,7 +821,7 @@ function tick(ts){
       const spread=wm.es>0?(i-(n-1)/2)*0.1:0;
       const angle=(n-1>0?(i-(n-1)/2)*0.15:0);
       const vx = Math.sin(spread)*bulletSpeed;
-      const vy = isCannon ? bulletSpeed : -bulletSpeed; // 火炮向下，其他向上
+      const vy = isCannon ? bulletSpeed : -bulletSpeed;
       pB.push({
         x:PL.x-off+i*sp2,y:PL.y-14,
         vx,vy,
@@ -851,7 +835,6 @@ function tick(ts){
   }
   if(G.sCool>0)G.sCool-=dt;
 
-  // 火炮区域
   cZ=cZ.filter(z=>{z.life-=dt;if(z.life<=0)return false;z.t-=dt;if(z.t<=0){z.t=60;enemies.forEach(e=>{if(Math.hypot(e.x-z.x,e.y-z.y)<z.r){damageEnemy(e,getAtk()*.2);spP(e.x,e.y,'#FF9900',2);}});cleanupDeadEnemies();}return true;});
 
   // 玩家子弹
@@ -879,8 +862,7 @@ function tick(ts){
         damageEnemy(e,dmg);spP(b.x,b.y,ic?'#FFE066':e.col,ic?7:4);
         if(ic)parts.push({x:e.x,y:e.y-e.h/2-5,vx:0,vy:-1.2,life:.9,color:'#FFE066',sz:2,glow:false,txt:'暴!'+dmg});
         if(b.cannon){
-          // 火炮爆炸：范围伤害
-          const explosionRadius = 60; // 爆炸半径
+          const explosionRadius = 60;
           enemies.forEach(oe=>{
             if(Math.hypot(oe.x-e.x,oe.y-e.y)<explosionRadius){
               damageEnemy(oe,b.explosionDmg);
@@ -925,11 +907,11 @@ function tick(ts){
     if(e.y>H+30){G.wLeft--;enemies.splice(enemies.indexOf(e),1);}
   });
 
-  // 掉落物
-  const mag=SK.mag*60;
+  // 掉落物 - 超级磁铁时吸附范围为全屏
+  const mag=G&&G.superMagnet>0?600:SK.mag*60;
   drops=drops.filter(d=>{
     d.y+=d.vy*dt;if(d.y>H+30)return false;
-    if(mag>0){const ddx=PL.x-d.x,ddy=PL.y-d.y,dd=Math.hypot(ddx,ddy);if(dd<mag){d.x+=ddx/dd*3.5*dt;d.y+=ddy/dd*3.5*dt;}}
+    if(mag>0){const ddx=PL.x-d.x,ddy=PL.y-d.y,dd=Math.hypot(ddx,ddy);if(dd<mag){const spd=G.superMagnet>0?8:3.5;d.x+=ddx/dd*spd*dt;d.y+=ddy/dd*spd*dt;}}
     if(Math.abs(d.x-PL.x)<18&&Math.abs(d.y-PL.y)<18){
       if(d.kind==='coin'){
         P.gold+=d.value;
@@ -1007,7 +989,6 @@ function tick(ts){
       }
     });
   } else if(wm.lm && G.laserCool <= 0 && enemies.length > 0){
-    // 激光已就绪但还未开始，显示准备状态轨迹（首波可见）
     const t=enemies.reduce((a,b)=>Math.hypot(a.x-PL.x,a.y-PL.y) < Math.hypot(b.x-PL.x,b.y-PL.y) ? a : b);
     const lc=eq['武器']?RAR[eq['武器'].rarity].c:'#7DF9AA';
     CT.strokeStyle=lc+'44';CT.lineWidth=1.8;
@@ -1037,6 +1018,7 @@ function tick(ts){
   if(wm.lm){const lp=Math.max(0,1-G.laserCool/wm.lc);CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(6,H-22,60,4);CT.fillStyle=G.laserCool<=0?'#7DF9AA':'#1a3a1a';CT.fillRect(6,H-22,Math.round(60*lp),4);}
   if(G.expBoost>0){CT.fillStyle='#7DF9AA';CT.font='9px monospace';CT.textAlign='left';CT.fillText('经验x2 '+(G.expBoost/60).toFixed(1)+'s',6,32);}
   if(G.goldBoost>0){CT.fillStyle='#FFE066';CT.font='9px monospace';CT.textAlign='left';CT.fillText('金币x2 '+(G.goldBoost/60).toFixed(1)+'s',6,44);}
+  if(G.superMagnet>0){CT.fillStyle='#c084fc';CT.font='9px monospace';CT.textAlign='left';CT.fillText('超磁铁 '+(G.superMagnet/60).toFixed(1)+'s',6,56);}
   let sy=H-32;Object.entries(AS).forEach(([sn,sd])=>{if(SA(sn)){CT.fillStyle=sd.c+'bb';CT.font='9px monospace';CT.textAlign='right';CT.fillText('+'+sn,W-6,sy);sy-=12;}});
   CT.strokeStyle='rgba(125,249,170,.4)';CT.lineWidth=1;CT.beginPath();CT.arc(G.mx,G.my,6,0,Math.PI*2);CT.stroke();CT.beginPath();CT.moveTo(G.mx-10,G.my);CT.lineTo(G.mx+10,G.my);CT.stroke();CT.beginPath();CT.moveTo(G.mx,G.my-10);CT.lineTo(G.mx,G.my+10);CT.stroke();
   if(G.fr%28===0)updHUD();
@@ -1101,12 +1083,11 @@ function runSkip(target,doneCB){
 }
 
 function startGame(){
-  // 关闭所有覆盖层
   stopLoop();
   document.getElementById('cardOv').className='';
   document.getElementById('skipOv').className='';
 
-  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:getBaseShield(),fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0,expBoost:0,goldBoost:0};
+  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:getBaseShield(),fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0,expBoost:0,goldBoost:0,superMagnet:0};
   G.maxHp=getMxHp();G.hp=G.maxHp;
   cZ=[];wQ=[];spT=0;
   PL={x:W/2,y:H-70,inv:0,wf:0,dir:1};
@@ -1162,7 +1143,8 @@ function renderMinion(){
   mkSec(rp,'仆从抽卡（转生币）');
   const qi=document.createElement('div');qi.style='color:#c084fc;font-size:11px;margin-bottom:7px';qi.textContent='转生币: '+P.rc+'  死亡后获得 boss数量³ + 人物等级';rp.appendChild(qi);
   const gr=document.createElement('div');gr.style='display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap';
-  [[1,5,'单抽'],[5,20,'五连'],[10,35,'十连']].forEach(([n,c,l])=>{const b=document.createElement('button');b.style='font-size:11px;color:'+(P.rc>=c?'#FFE066':'#444');b.textContent=l+'('+c+'币)';b.onclick=()=>doGacha(n);gr.appendChild(b);});rp.appendChild(gr);
+  // 修正：单抽5币，五连25币，十连50币（每次5币）
+  [[1,5,'单抽'],[5,25,'五连'],[10,50,'十连']].forEach(([n,c,l])=>{const b=document.createElement('button');b.style='font-size:11px;color:'+(P.rc>=c?'#FFE066':'#444');b.textContent=l+'('+c+'币)';b.onclick=()=>doGacha(n);gr.appendChild(b);});rp.appendChild(gr);
   const qr=document.createElement('div');qr.style='display:flex;gap:3px;margin-bottom:7px;flex-wrap:wrap';
   RAR.forEach(r=>{const d=document.createElement('div');d.style='background:'+r.bg+';border:1px solid '+r.b+';border-radius:3px;padding:2px 6px;font-size:10px;color:'+r.c;d.textContent=r.n;qr.appendChild(d);});rp.appendChild(qr);
   mkSec(rp,'已拥有（最多出战4个）');
@@ -1311,13 +1293,12 @@ CV.addEventListener('touchmove',e=>{
 },{passive:false});
 CV.addEventListener('touchend',e=>{if(e.cancelable)e.preventDefault();},{passive:false});
 
-// ═══ 初始化：只画一帧，绝不启动 loop ═══
+// ═══ 初始化 ═══
 initStars();drawBg(1);
 CT.fillStyle='#7DF9AA';CT.font='bold 20px monospace';CT.textAlign='center';CT.fillText('像素射击战 v6',W/2,H/2-32);
 CT.fillStyle='#555';CT.font='12px monospace';CT.fillText('技能点养成 | 开局无初始武器 | 转生币抽卡',W/2,H/2);
-CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('金币拾取 | 半波连刷 | 技能只在转生时重置',W/2,H/2+22);
+CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('金币拾取 | 半波连刷 | 超级磁铁全屏吸附',W/2,H/2+22);
 updHUD();
 
-// 初始化背包（开局不再赠送武器）
 initWeapons();
 </script></body></html>
