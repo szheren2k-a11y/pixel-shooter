@@ -434,7 +434,7 @@ function mActFn(type,mx,my){
   }else if(type==='knight'){
     const sh=2+ri*2+d.rank*2+d.lvl*2;G.shield+=sh;
     const range=50+(ri+d.rank)*25,dmg=getAtk()*pow*(2+ri*2);
-    enemies.forEach(e=>{if(Math.hypot(e.x-PL.x,e.y-PL.y)<range){e.hp-=dmg;spP(e.x,e.y,RAR[ri].c,4);}});
+    enemies.forEach(e=>{if(Math.hypot(e.x-PL.x,e.y-PL.y)<range){damageEnemy(e,dmg);spP(e.x,e.y,RAR[ri].c,4);}});
     for(let i=0;i<16;i++){const a=Math.random()*Math.PI*2,r2=Math.random()*range;parts.push({x:PL.x+Math.cos(a)*r2,y:PL.y+Math.sin(a)*r2,vx:Math.cos(a)*2,vy:Math.sin(a)*2,life:.7,color:RAR[ri].c,sz:3,glow:ri>=3,txt:null});}
     showToast('骑士护盾+'+sh);
   }else if(type==='mage'){
@@ -442,7 +442,7 @@ function mActFn(type,mx,my){
     const tgt=enemies.reduce((a,b)=>a.hp<b.hp?a:b);
     const aoe=60+ri*20+d.rank*35,dmg=getAtk()*pow*(8+ri*5);
     const ex=tgt.x,ey=tgt.y-tgt.h/2-8;
-    enemies.forEach(oe=>{if(Math.hypot(oe.x-ex,oe.y-ey)<aoe){oe.hp-=dmg;spP(oe.x,oe.y,RAR[ri].c,5);}});
+    enemies.forEach(oe=>{if(Math.hypot(oe.x-ex,oe.y-ey)<aoe){damageEnemy(oe,dmg);spP(oe.x,oe.y,RAR[ri].c,5);}});
     for(let i=0;i<24;i++){const a=i/24*Math.PI*2,r2=8+Math.random()*aoe*.4;parts.push({x:ex+Math.cos(a)*r2,y:ey+Math.sin(a)*r2,vx:Math.cos(a)*1.2,vy:Math.sin(a)*1.2,life:1.1,color:RAR[ri].c,sz:3,glow:true,txt:null});}
     parts.push({x:ex,y:ey-10,vx:0,vy:-.5,life:0.9,color:RAR[ri].c,sz:2,glow:false,txt:'爆'});
   }else if(type==='healer'){
@@ -565,7 +565,7 @@ function fireE(e){
 }
 
 function drawE(e){
-  const{x,y,w,h,hp:eh,maxHp:em2,shape,col}=e,hr=eh/em2;
+  const{x,y,w,h,hp:eh,maxHp:em2,shape,col}=e,hr=Math.max(0,eh/em2);
   CT.save();
   const bx=Math.max(4,Math.min(W-w-4,x-w/2));
   if(shape==='boss'){
@@ -714,6 +714,11 @@ function applyEffectDrop(d){
     showToast('获得临时效果: 清除子弹'+(cleared>0?' x'+cleared:''));
   }
 }
+function damageEnemy(enemy,amount){
+  if(!enemy||amount<=0)return false;
+  enemy.hp=Math.max(0,enemy.hp-amount);
+  return enemy.hp<=0;
+}
 
 // ═══ 主游戏循环 ═══
 // 关键：RID 在 tick 顶部续帧，这样 stopLoop 后下一帧不会再调
@@ -738,6 +743,11 @@ function tick(ts){
   if(PL.inv>0)PL.inv-=dt;
 
   const wm=wMods(),wb=wsB();
+  function cleanupDeadEnemies(){
+    for(let i=enemies.length-1;i>=0;i--){
+      if(enemies[i].hp<=0)killE(enemies[i],i);
+    }
+  }
 
   // 激光：移动速度0.001，持续时间5秒，冷却时间2秒（可套装减少）
   if(wm.lm){
@@ -842,7 +852,7 @@ function tick(ts){
   if(G.sCool>0)G.sCool-=dt;
 
   // 火炮区域
-  cZ=cZ.filter(z=>{z.life-=dt;if(z.life<=0)return false;z.t-=dt;if(z.t<=0){z.t=60;enemies.forEach(e=>{if(Math.hypot(e.x-z.x,e.y-z.y)<z.r){e.hp-=getAtk()*.2;spP(e.x,e.y,'#FF9900',2);}});}return true;});
+  cZ=cZ.filter(z=>{z.life-=dt;if(z.life<=0)return false;z.t-=dt;if(z.t<=0){z.t=60;enemies.forEach(e=>{if(Math.hypot(e.x-z.x,e.y-z.y)<z.r){damageEnemy(e,getAtk()*.2);spP(e.x,e.y,'#FF9900',2);}});cleanupDeadEnemies();}return true;});
 
   // 玩家子弹
   pB=pB.filter(b=>{
@@ -866,20 +876,20 @@ function tick(ts){
       const e=enemies[i];
       if(Math.abs(b.x-e.x)<e.w/2+2&&Math.abs(b.y-e.y)<e.h/2+2){
         const ic=Math.random()<b.crit,dmg=Math.round(b.dmg*(ic?b.cd:1));
-        e.hp-=dmg;spP(b.x,b.y,ic?'#FFE066':e.col,ic?7:4);
+        damageEnemy(e,dmg);spP(b.x,b.y,ic?'#FFE066':e.col,ic?7:4);
         if(ic)parts.push({x:e.x,y:e.y-e.h/2-5,vx:0,vy:-1.2,life:.9,color:'#FFE066',sz:2,glow:false,txt:'暴!'+dmg});
         if(b.cannon){
           // 火炮爆炸：范围伤害
           const explosionRadius = 60; // 爆炸半径
           enemies.forEach(oe=>{
             if(Math.hypot(oe.x-e.x,oe.y-e.y)<explosionRadius){
-              oe.hp-=b.explosionDmg;
+              damageEnemy(oe,b.explosionDmg);
               spP(oe.x,oe.y,'#FF9900',4);
             }
           });
           cZ.push({x:e.x,y:e.y,r:explosionRadius,life:3,t:0});
         }
-        if(b.aoe)enemies.forEach(oe=>{if(oe.id!==e.id&&Math.hypot(oe.x-e.x,oe.y-e.y)<b.aoe){oe.hp-=dmg*.5;spP(oe.x,oe.y,b.col||'#c084fc',4);}});
+        if(b.aoe)enemies.forEach(oe=>{if(oe.id!==e.id&&Math.hypot(oe.x-e.x,oe.y-e.y)<b.aoe){damageEnemy(oe,dmg*.5);spP(oe.x,oe.y,b.col||'#c084fc',4);}});
         if(b.sp>0&&enemies.length>1){for(let s2=0;s2<b.sp;s2++){const a=s2/b.sp*Math.PI*2;pB.push({x:b.x,y:b.y,vx:Math.cos(a)*10,vy:Math.sin(a)*10,dmg:b.dmg*.5,crit:b.crit,cd:b.cd,pr:0,ph:0,col:b.col,cannon:false,sp:0,aoe:b.aoe||0});}}
         if(e.hp<=0){killE(e,i);if(b.pr<=0||b.ph>=b.pr){used=true;break;}b.ph++;}
         else if(b.pr<=0){used=true;break;}
@@ -890,7 +900,7 @@ function tick(ts){
 
   function killE(e,idx){
     spP(e.x,e.y,e.col,e.shape==='boss'?40:14);
-    if(SA('爆炸套'))enemies.forEach(oe=>{if(oe.id!==e.id&&Math.hypot(oe.x-e.x,oe.y-e.y)<70){oe.hp-=getAtk()*3;spP(oe.x,oe.y,'#fb923c',5);}});
+    if(SA('爆炸套'))enemies.forEach(oe=>{if(oe.id!==e.id&&Math.hypot(oe.x-e.x,oe.y-e.y)<70){damageEnemy(oe,getAtk()*3);spP(oe.x,oe.y,'#fb923c',5);}});
     playerExp += Math.round(e.exp*(G.expBoost>0?2:1));
     drops.push(makeCoinDrop(e.x,e.y,Math.round(e.cn*getCB()*(G.goldBoost>0?2:1))));G.wLeft--;
     if(e.shape==='boss'){
@@ -904,6 +914,7 @@ function tick(ts){
     }
     if(Math.random()<0.08)drops.push(makeEffectDrop(e.x+(Math.random()-.5)*18,e.y+(Math.random()-.5)*18));
     enemies.splice(idx,1);
+    cleanupDeadEnemies();
   }
 
   // 怪物移动
