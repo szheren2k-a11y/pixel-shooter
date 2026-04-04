@@ -140,26 +140,32 @@ function stopLoop(){
 let playerLevel=0,playerExp=0,expToNext=50;
 
 // ═══ 技能（持久，转生清零） ═══
-let SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0};
-const SKILL_ORDER=['atk','def','hpUp','fr','ms','pr','regen','crit','mag','shield'];
+let SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0,goldRate:0,expRate:0};
+const SKILL_ORDER=['atk','def','hpUp','fr','ms','pr','regen','crit','mag','shield','goldRate','expRate'];
 const SKILL_META={
-  atk:{ic:'!',n:'攻击强化',d:'+10%伤害',cap:Infinity},
-  def:{ic:'A',n:'防御强化',d:'+8%减伤倍率',cap:Infinity},
-  hpUp:{ic:'H',n:'生命强化',d:'+25最大HP',cap:Infinity},
-  fr:{ic:'>',n:'射速提升',d:'+15%射速',cap:Infinity},
-  ms:{ic:'M',n:'多重射击',d:'+1弹道',cap:5},
-  pr:{ic:'P',n:'穿透',d:'+1穿透',cap:5},
-  regen:{ic:'R',n:'持续回血',d:'每波结束+15HP',cap:Infinity},
-  crit:{ic:'C',n:'暴击强化',d:'+8%暴击',cap:5},
-  mag:{ic:'@',n:'磁铁',d:'吸收范围+60',cap:5},
-  shield:{ic:'S',n:'护盾强化',d:'+1初始护盾',cap:5},
+  atk:{ic:'!',n:'攻击强化',d:'+10%伤害',cap:Infinity,cost:'soft'},
+  def:{ic:'A',n:'防御强化',d:'+8%减伤倍率',cap:Infinity,cost:'soft'},
+  hpUp:{ic:'H',n:'生命强化',d:'+25最大HP',cap:Infinity,cost:'soft'},
+  fr:{ic:'>',n:'射速提升',d:'+15%射速',cap:Infinity,cost:'soft'},
+  ms:{ic:'M',n:'多重射击',d:'+1弹道',cap:5,cost:'double'},
+  pr:{ic:'P',n:'穿透',d:'+1穿透',cap:5,cost:'double'},
+  regen:{ic:'R',n:'持续回血',d:'每波结束+15HP',cap:Infinity,cost:'soft'},
+  crit:{ic:'C',n:'暴击强化',d:'+8%暴击',cap:5,cost:'double'},
+  mag:{ic:'@',n:'磁铁',d:'吸收范围+60',cap:5,cost:'double'},
+  shield:{ic:'S',n:'护盾强化',d:'+1初始护盾',cap:5,cost:'double'},
+  goldRate:{ic:'$',n:'金币倍率',d:'金币收益x2',cap:5,cost:'double'},
+  expRate:{ic:'E',n:'经验倍率',d:'经验收益x2',cap:5,cost:'double'},
 };
 function getSkillCap(key){return SKILL_META[key]?.cap??Infinity;}
 function getSkillCost(key){
   const rank=SK[key]||0;
-  return getSkillCap(key)<Infinity?10*Math.pow(10,rank):Math.pow(2,rank);
+  const costType=SKILL_META[key]?.cost||'soft';
+  if(costType==='double')return Math.max(1,Math.pow(2,rank));
+  return Math.max(1,Math.ceil(Math.pow(1.2,rank)));
 }
 function getBaseShield(){return SK.shield||0;}
+function getSkillGoldMultiplier(){return Math.pow(2,SK.goldRate||0);}
+function getSkillExpMultiplier(){return Math.pow(2,SK.expRate||0);}
 function buySkill(key){
   const meta=SKILL_META[key];
   if(!meta)return;
@@ -255,7 +261,7 @@ function getDef(){return Math.min(.75,(gS('防御')/100+gS('格挡')/150)*(1+SK.
 function getMxHp(){return Math.round(100+gS('最大HP')+SK.hpUp*25);}
 function getFireI(){return Math.max(3,(20/(1+SK.fr*0.15))*wMods().rm*wsB().rm);}
 function getMS(){return Math.max(1,1+SK.ms+wMods().es+wsB().es);}
-function getCB(){return 1+gS('金币')/80;}
+function getCB(){return (1+gS('金币')/80)*getSkillGoldMultiplier();}
 
 // ═══ 装备生成 ═══
 function rollGear(minR,wave,boss,forceType){
@@ -424,15 +430,16 @@ function toggleMA(t){
 function mActFn(type,mx,my){
   const d=ensureMinionData(mD[type]);if(!d)return;
   const ri=d.ri,pow=mPow(type);
+  const levelScale=1+playerLevel*0.08;
   if(type==='archer'){
     if(!enemies.length)return;
     const tgt=enemies.reduce((a,b)=>a.y>b.y?a:b);
     const dx=tgt.x-mx,dy=tgt.y-my,dl=Math.hypot(dx,dy);if(dl===0)return;
-    const arrows=1+ri+d.rank,spr=0.05*(ri+d.rank*.7),dmg=getAtk()*pow*(3+ri*2);
+    const arrows=1+ri+d.rank,spr=0.05*(ri+d.rank*.7),dmg=getAtk()*0.6*levelScale*pow;
     for(let i=0;i<arrows;i++){const a=(i-(arrows-1)/2)*spr,cs=Math.cos(a),sn=Math.sin(a);pB.push({x:mx,y:my,vx:(dx/dl*13)*cs-(dy/dl*13)*sn,vy:(dy/dl*13)*cs+(dx/dl*13)*sn,dmg,crit:.15+ri*.04,cd:1.6,pr:0,ph:0,col:RAR[ri].c,aoe:ri>=4?35:0,sp:0});}
     if(ri+d.rank>=3)for(let i=0;i<12;i++)parts.push({x:mx,y:my,vx:(Math.random()-.5)*7,vy:(Math.random()-.5)*7,life:.8,color:RAR[ri].c,sz:2+ri,glow:true,txt:null});
   }else if(type==='knight'){
-    const sh=2+ri*2+d.rank*2+d.lvl*2;G.shield+=sh;
+    const sh=1;G.shield+=sh;
     const range=50+(ri+d.rank)*25,dmg=getAtk()*pow*(2+ri*2);
     enemies.forEach(e=>{if(Math.hypot(e.x-PL.x,e.y-PL.y)<range){damageEnemy(e,dmg);spP(e.x,e.y,RAR[ri].c,4);}});
     for(let i=0;i<16;i++){const a=Math.random()*Math.PI*2,r2=Math.random()*range;parts.push({x:PL.x+Math.cos(a)*r2,y:PL.y+Math.sin(a)*r2,vx:Math.cos(a)*2,vy:Math.sin(a)*2,life:.7,color:RAR[ri].c,sz:3,glow:ri>=3,txt:null});}
@@ -440,13 +447,13 @@ function mActFn(type,mx,my){
   }else if(type==='mage'){
     if(!enemies.length)return;
     const tgt=enemies.reduce((a,b)=>a.hp<b.hp?a:b);
-    const aoe=60+ri*20+d.rank*35,dmg=getAtk()*pow*(8+ri*5);
+    const aoe=60+ri*20+d.rank*35,dmg=getAtk()*0.3*levelScale*pow;
     const ex=tgt.x,ey=tgt.y-tgt.h/2-8;
     enemies.forEach(oe=>{if(Math.hypot(oe.x-ex,oe.y-ey)<aoe){damageEnemy(oe,dmg);spP(oe.x,oe.y,RAR[ri].c,5);}});
     for(let i=0;i<24;i++){const a=i/24*Math.PI*2,r2=8+Math.random()*aoe*.4;parts.push({x:ex+Math.cos(a)*r2,y:ey+Math.sin(a)*r2,vx:Math.cos(a)*1.2,vy:Math.sin(a)*1.2,life:1.1,color:RAR[ri].c,sz:3,glow:true,txt:null});}
     parts.push({x:ex,y:ey-10,vx:0,vy:-.5,life:0.9,color:RAR[ri].c,sz:2,glow:false,txt:'爆'});
   }else if(type==='healer'){
-    const base=8+ri*8,heal=base*pow;
+    const base=getAtk()*0.1*levelScale,heal=base*pow;
     G.hp=Math.min(G.maxHp,G.hp+heal);
     for(let i=0;i<10+ri*4;i++){const a=Math.random()*Math.PI*2,r2=Math.random()*(40+ri*14);parts.push({x:PL.x+Math.cos(a)*r2,y:PL.y+Math.sin(a)*r2,vx:0,vy:-1.5,life:1,color:RAR[ri].c,sz:2+ri,glow:true,txt:null});}
     parts.push({x:PL.x,y:PL.y-20,vx:0,vy:-.8,life:1.4,color:RAR[ri].c,sz:2,glow:false,txt:'+'+Math.round(heal)+'HP'});
@@ -693,12 +700,34 @@ const EFFECT_POOL=[
   {kind:'goldBoost',label:'金币x2',color:'#FFE066',icon:'G'},
   {kind:'shield',label:'+1护盾',color:'#54A0FF',icon:'S'},
   {kind:'clearBullets',label:'清弹',color:'#FF6B6B',icon:'C'},
+  {kind:'superMagnet',label:'超级磁铁',color:'#F9A8D4',icon:'P'},
 ];
 function makeEffectDrop(x,y){
   const fx=EFFECT_POOL[Math.floor(Math.random()*EFFECT_POOL.length)];
   return{kind:'effect',effect:fx.kind,label:fx.label,color:fx.color,icon:fx.icon,x,y,phase:Math.random()*Math.PI*2,vy:.85};
 }
-function applyEffectDrop(d){
+function pickupDrop(d,opts){
+  opts=opts||{};
+  if(!d)return false;
+  if(d.kind==='coin'){
+    P.gold+=d.value;
+    if(!opts.silent)showToast('+'+d.value+' 金币');
+    spP(d.x,d.y,'#FFE066',8);
+    return true;
+  }
+  if(d.kind==='effect'){
+    applyEffectDrop(d,opts);
+    spP(d.x,d.y,d.color,10);
+    return true;
+  }
+  bag.push(ensureGearState({name:d.name,type:d.type,rarity:d.rarity,stats:d.stats,baseStats:d.baseStats,lv:d.lv,suit:d.suit,wsuit:d.wsuit,sub:d.sub,id:d.id}));
+  autoProc(G.wave);
+  if(!opts.silent)showToast(RAR[d.rarity].n+' '+d.name);
+  spP(d.x,d.y,RAR[d.rarity].c,10);
+  return true;
+}
+function applyEffectDrop(d,opts){
+  opts=opts||{};
   if(d.effect==='expBoost'){
     G.expBoost=600;
     showToast('获得临时效果: 10秒经验x2');
@@ -712,6 +741,9 @@ function applyEffectDrop(d){
     const cleared=eB.length;
     eB=[];
     showToast('获得临时效果: 清除子弹'+(cleared>0?' x'+cleared:''));
+  }else if(d.effect==='superMagnet'){
+    G.superMagnet=600;
+    showToast('获得临时效果: 10秒超级磁铁');
   }
 }
 function damageEnemy(enemy,amount){
@@ -731,6 +763,7 @@ function tick(ts){
   const dt=Math.min((ts-G.lt)/16.67,3);G.lt=ts;G.fr++;
   if(G.expBoost>0)G.expBoost=Math.max(0,G.expBoost-dt);
   if(G.goldBoost>0)G.goldBoost=Math.max(0,G.goldBoost-dt);
+  if(G.superMagnet>0)G.superMagnet=Math.max(0,G.superMagnet-dt);
 
   // 回血套
   if(SA('回血套')){G.sRT+=dt;if(G.sRT>300){G.sRT=0;G.hp=Math.min(G.maxHp,G.hp+Math.round(G.maxHp*.03));}}
@@ -901,7 +934,7 @@ function tick(ts){
   function killE(e,idx){
     spP(e.x,e.y,e.col,e.shape==='boss'?40:14);
     if(SA('爆炸套'))enemies.forEach(oe=>{if(oe.id!==e.id&&Math.hypot(oe.x-e.x,oe.y-e.y)<70){damageEnemy(oe,getAtk()*3);spP(oe.x,oe.y,'#fb923c',5);}});
-    playerExp += Math.round(e.exp*(G.expBoost>0?2:1));
+    playerExp += Math.round(e.exp*getSkillExpMultiplier()*(G.expBoost>0?2:1));
     drops.push(makeCoinDrop(e.x,e.y,Math.round(e.cn*getCB()*(G.goldBoost>0?2:1))));G.wLeft--;
     if(e.shape==='boss'){
       P.clearedWave=Math.max(P.clearedWave,G.wave);
@@ -926,25 +959,14 @@ function tick(ts){
   });
 
   // 掉落物
-  const mag=SK.mag*60;
+  const mag=Math.max(SK.mag,G.superMagnet>0?10:0)*60;
   drops=drops.filter(d=>{
     d.y+=d.vy*dt;if(d.y>H+30)return false;
     if(mag>0){const ddx=PL.x-d.x,ddy=PL.y-d.y,dd=Math.hypot(ddx,ddy);if(dd<mag){d.x+=ddx/dd*3.5*dt;d.y+=ddy/dd*3.5*dt;}}
     if(Math.abs(d.x-PL.x)<18&&Math.abs(d.y-PL.y)<18){
-      if(d.kind==='coin'){
-        P.gold+=d.value;
-        showToast('+'+d.value+' 金币');
-        spP(d.x,d.y,'#FFE066',8);
-        updHUD();
-        return false;
-      }
-      if(d.kind==='effect'){
-        applyEffectDrop(d);
-        spP(d.x,d.y,d.color,10);
-        updHUD();
-        return false;
-      }
-      bag.push(ensureGearState({name:d.name,type:d.type,rarity:d.rarity,stats:d.stats,baseStats:d.baseStats,lv:d.lv,suit:d.suit,wsuit:d.wsuit,sub:d.sub,id:d.id}));autoProc(G.wave);showToast(RAR[d.rarity].n+' '+d.name);spP(d.x,d.y,RAR[d.rarity].c,10);return false;
+      pickupDrop(d);
+      updHUD();
+      return false;
     }
     return true;
   });
@@ -1037,6 +1059,7 @@ function tick(ts){
   if(wm.lm){const lp=Math.max(0,1-G.laserCool/wm.lc);CT.fillStyle='rgba(0,0,0,.4)';CT.fillRect(6,H-22,60,4);CT.fillStyle=G.laserCool<=0?'#7DF9AA':'#1a3a1a';CT.fillRect(6,H-22,Math.round(60*lp),4);}
   if(G.expBoost>0){CT.fillStyle='#7DF9AA';CT.font='9px monospace';CT.textAlign='left';CT.fillText('经验x2 '+(G.expBoost/60).toFixed(1)+'s',6,32);}
   if(G.goldBoost>0){CT.fillStyle='#FFE066';CT.font='9px monospace';CT.textAlign='left';CT.fillText('金币x2 '+(G.goldBoost/60).toFixed(1)+'s',6,44);}
+  if(G.superMagnet>0){CT.fillStyle='#F9A8D4';CT.font='9px monospace';CT.textAlign='left';CT.fillText('超级磁铁 '+(G.superMagnet/60).toFixed(1)+'s',6,56);}
   let sy=H-32;Object.entries(AS).forEach(([sn,sd])=>{if(SA(sn)){CT.fillStyle=sd.c+'bb';CT.font='9px monospace';CT.textAlign='right';CT.fillText('+'+sn,W-6,sy);sy-=12;}});
   CT.strokeStyle='rgba(125,249,170,.4)';CT.lineWidth=1;CT.beginPath();CT.arc(G.mx,G.my,6,0,Math.PI*2);CT.stroke();CT.beginPath();CT.moveTo(G.mx-10,G.my);CT.lineTo(G.mx+10,G.my);CT.stroke();CT.beginPath();CT.moveTo(G.mx,G.my-10);CT.lineTo(G.mx,G.my+10);CT.stroke();
   if(G.fr%28===0)updHUD();
@@ -1071,7 +1094,7 @@ function doRebirth(gain){
   P.rc += gain;
   P.clearedWave = 0;
   P.sp = 0;
-  SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0};
+  SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0,goldRate:0,expRate:0};
   playerLevel=0;playerExp=0;expToNext=50;
   initWeapons();
   eq = {武器:null, 护甲:null, 头盔:null, 饰品:null};
@@ -1264,7 +1287,7 @@ function renderSkill(){
   rp.appendChild(head);
   const tips=document.createElement('div');
   tips.style='color:#555;font-size:10px;line-height:1.8;margin-bottom:8px';
-  tips.textContent='技能只有转生才会重置。有限技能首购消耗10技能点，此后同一技能每买一次价格乘10；无限技能首购只需1技能点，之后每次价格乘2。磁铁、多重射击、穿透、暴击、护盾最多购买5次，其他技能可无限购买。';
+  tips.textContent='技能只有转生才会重置。多重射击、穿透、暴击、磁铁、护盾、金币倍率、经验倍率最多5级，价格为 1/2/4/8...；其他技能首购1点，之后每次按1.2倍增长并向上取整。';
   rp.appendChild(tips);
   const grid=document.createElement('div');grid.className='g2';
   SKILL_ORDER.forEach(key=>{
