@@ -118,11 +118,10 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 const CV=document.getElementById('c'),CT=CV.getContext('2d'),W=500,H=640;
 
 // ═══ 持久数据 ═══
-const P={rc:0,clearedWave:0,gold:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
+const P={rc:0,clearedWave:0,gold:0,sp:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
 
 // ═══ 每局数据（startGame重建） ═══
 let G=null,PL=null;
-let hasSkillCards = false;
 let stars=[],pB=[],eB=[],enemies=[],parts=[],drops=[],cZ=[],wQ=[],spT=0;
 
 // ═══ loop控制：唯一入口 ═══
@@ -140,10 +139,47 @@ function stopLoop(){
 // ═══ 人物等级和经验 ═══
 let playerLevel=1,playerExp=0,expToNext=50;
 
-// ═══ 技能（本局，死亡清零） ═══
-let SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0};
-let skillPickCount=0;
-let skillCaps={ms:0,pr:0,crit:0,mag:0};
+// ═══ 技能（持久，转生清零） ═══
+let SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0};
+const SKILL_ORDER=['atk','def','hpUp','fr','ms','pr','regen','crit','mag','shield'];
+const SKILL_META={
+  atk:{ic:'!',n:'攻击强化',d:'+10%伤害',cap:Infinity},
+  def:{ic:'A',n:'防御强化',d:'+8%减伤倍率',cap:Infinity},
+  hpUp:{ic:'H',n:'生命强化',d:'+25最大HP',cap:Infinity},
+  fr:{ic:'>',n:'射速提升',d:'+15%射速',cap:Infinity},
+  ms:{ic:'M',n:'多重射击',d:'+1弹道',cap:5},
+  pr:{ic:'P',n:'穿透',d:'+1穿透',cap:5},
+  regen:{ic:'R',n:'持续回血',d:'每波结束+15HP',cap:Infinity},
+  crit:{ic:'C',n:'暴击强化',d:'+8%暴击',cap:5},
+  mag:{ic:'@',n:'磁铁',d:'吸收范围+60',cap:5},
+  shield:{ic:'S',n:'护盾强化',d:'+1初始护盾',cap:5},
+};
+function getSkillCap(key){return SKILL_META[key]?.cap??Infinity;}
+function getSkillCost(key){
+  const rank=SK[key]||0;
+  return getSkillCap(key)<Infinity?10*Math.pow(10,rank):Math.pow(2,rank);
+}
+function getBaseShield(){return SK.shield||0;}
+function buySkill(key){
+  const meta=SKILL_META[key];
+  if(!meta)return;
+  const rank=SK[key]||0;
+  const cap=getSkillCap(key);
+  if(rank>=cap){showToast(meta.n+' 已满级');return;}
+  const cost=getSkillCost(key);
+  if(P.sp<cost){showToast('技能点不足，需'+cost);return;}
+  P.sp-=cost;
+  SK[key]=rank+1;
+  if(key==='hpUp'&&G){
+    const nm=getMxHp();
+    G.hp=Math.min(G.hp+(nm-G.maxHp),nm);
+    G.maxHp=nm;
+  }
+  if(key==='shield'&&G&&G.state!=='dead')G.shield+=1;
+  showToast(meta.n+' Lv.'+SK[key]);
+  updHUD();
+  if(curTab==='skill')renderSkill();
+}
 
 // ═══ 品质 ═══
 const RAR=[
@@ -202,7 +238,7 @@ function wMods(){
   if(t==='激光'){
     const baseCool=120; // 基础冷却时间（帧，2秒）
     const rarityReduce=w.rarity*50; // 每等级品质减少50帧
-    const speedReduce=SK.fr*100; // 射速每+0.1减少10帧
+    const speedReduce=SK.fr*15; // 技能射速等级带来的冷却缩减
     const laserSuitReduce=wsN('激光套')>=4?120:wsN('激光套')>=2?60:0; // 激光套装减少
     return{rm:1,dm:1,es:0,cm:false,cr:0,lm:true,lc:Math.max(0,baseCool-rarityReduce-speedReduce-laserSuitReduce)};
   }
@@ -212,77 +248,14 @@ function wMods(){
 
 // ═══ 属性计算 ═══
 function gS(s){let v=0;for(const g of Object.values(eq))if(g&&g.stats&&g.stats[s])v+=g.stats[s];return v;}
-function getAtk(){return(1+gS('攻击')/20)*(1+SK.atk)*wMods().dm;}
-function getCrit(){let c=Math.min(.88,gS('暴击率')/100+SK.crit);if(SA('暴击套'))c=Math.min(.95,c+.3);return c;}
+function getAtk(){return(1+gS('攻击')/20)*(1+SK.atk*0.1)*wMods().dm;}
+function getCrit(){let c=Math.min(.88,gS('暴击率')/100+SK.crit*0.08);if(SA('暴击套'))c=Math.min(.95,c+.3);return c;}
 function getCritD(){return(1.5+gS('暴击伤害')/100)*(SA('暴击套')?2:1);}
-function getDef(){return Math.min(.75,(gS('防御')/100+gS('格挡')/150)*(1+SK.def));}
-function getMxHp(){return Math.round(100+gS('最大HP')+SK.hpUp);}
-function getFireI(){return Math.max(3,(20-SK.fr*20)*wMods().rm*wsB().rm);}
+function getDef(){return Math.min(.75,(gS('防御')/100+gS('格挡')/150)*(1+SK.def*0.08));}
+function getMxHp(){return Math.round(100+gS('最大HP')+SK.hpUp*25);}
+function getFireI(){return Math.max(3,(20/(1+SK.fr*0.15))*wMods().rm*wsB().rm);}
 function getMS(){return Math.max(1,1+SK.ms+wMods().es+wsB().es);}
 function getCB(){return 1+gS('金币')/80;}
-
-// ═══ 技能卡牌 ═══
-const SPOOL=[
-  {ic:'!',n:'攻击强化',d:'+10%伤害',fn(){SK.atk+=0.1;}},
-  {ic:'A',n:'防御强化',d:'+8%减伤',fn(){SK.def+=0.08;}},
-  {ic:'H',n:'生命强化',d:'+25最大HP',fn(){SK.hpUp+=25;if(G){G.maxHp=getMxHp();G.hp=Math.min(G.hp+25,G.maxHp);}}},
-  {ic:'>',n:'射速提升',d:'+15%射速',fn(){SK.fr+=0.15;}},
-  {ic:'M',n:'多重射击',d:'+1弹道（最多5级）',key:'ms',cap:5,priority:true,fn(){SK.ms+=1;}},
-  {ic:'P',n:'穿透',d:'+1穿透（最多5级）',key:'pr',cap:5,priority:true,fn(){SK.pr+=1;}},
-  {ic:'R',n:'持续回血',d:'每波+15HP',fn(){SK.regen+=15;}},
-  {ic:'C',n:'暴击强化',d:'+8%暴击（最多5级）',key:'crit',cap:5,priority:true,fn(){SK.crit+=0.08;}},
-  {ic:'@',n:'磁铁',d:'吸收范围+60（最多5级）',key:'mag',cap:5,priority:true,fn(){SK.mag+=60;}},
-];
-const FILL=[
-  {ic:'+',n:'+1%攻击',d:'充数',fn(){SK.atk+=0.01;}},
-  {ic:'+',n:'+1%防御',d:'充数',fn(){SK.def+=0.01;}},
-  {ic:'+',n:'+1%HP',d:'充数',fn(){SK.hpUp+=2;}},
-];
-
-function shuffle(arr){return [...arr].sort(()=>Math.random()-.5);}
-function canPickCard(card){return !card.cap||!card.key||skillCaps[card.key]<card.cap;}
-function pickCards(){
-  const pri=shuffle(SPOOL.filter(card=>card.priority&&canPickCard(card)));
-  const oth=shuffle(SPOOL.filter(card=>(!card.priority)&&canPickCard(card)));
-  const pool=[...pri.slice(0,3)];
-  for(const card of oth){if(pool.length>=3)break;pool.push(card);}
-  while(pool.length<3)pool.push(FILL[Math.floor(Math.random()*3)]);
-  return pool.slice(0,3);
-}
-
-// showCards：在右侧面板展示卡牌选择，非阻塞；选完回调
-function showCards(n,label,done){
-  n=Math.min(n,Math.max(0,20-skillPickCount));
-  if(n<=0){
-    hasSkillCards = false;
-    document.getElementById('skillOv').style.display = 'none';
-    if(G) G.state = 'playing';
-    if(done)done();
-    startLoop();
-    return;
-  }
-  hasSkillCards = true;
-  const choices=pickCards();
-  const sub=document.getElementById('skillSub');
-  sub.textContent=label||'选择技能';
-  const row=document.getElementById('skillRow');
-  row.innerHTML = '';
-  choices.forEach((card,idx)=>{
-    const d=document.createElement('div');d.className='sc';
-    d.innerHTML='<b>'+card.ic+'</b><h3>'+card.n+'</h3><p>'+card.d+'</p>';
-    d.onclick=()=>{
-      card.fn();
-      skillPickCount++;
-      if(card.key&&card.cap)skillCaps[card.key]++;
-      showToast('获得: '+card.n);
-      showCards(n-1,label,done);
-    };
-    row.appendChild(d);
-  });
-  document.getElementById('skillOv').style.display = 'flex';
-  if(G) G.state = 'paused';
-  stopLoop();
-}
 
 // ═══ 装备生成 ═══
 function rollGear(minR,wave,boss,forceType){
@@ -300,7 +273,7 @@ function rollGear(minR,wave,boss,forceType){
   const stats={};
   ch.forEach(s=>{stats[s]=Math.round((base+Math.random()*base*.8)*(s==='暴击率'||s==='格挡'?5:s==='暴击伤害'?14:s==='最大HP'?20:s==='金币'?8:s==='射速'?1:5));});
   const suit=(ri>=2&&Math.random()<.3)?Object.keys(AS)[Math.floor(Math.random()*4)]:null;
-  const wsuit=(type==='武器'&&ri>=2&&Math.random()<.35)?Object.keys(WS)[Math.floor(Math.random()*3)]:null;
+  const wsuit=(type==='武器'&&ri>=2&&Math.random()<.35)?Object.keys(WS)[Math.floor(Math.random()*Object.keys(WS).length)]:null;
   const sub=type==='武器'?WSUB[Math.floor(Math.random()*5)]:null;
   const pfx=['锈蚀','古老','精锻','神圣','毁灭'][ri];
   const nms={武器:['裂空枪','星光炮','暗影矢','闪电刃','毁灭炮'],护甲:['铁皮甲','强化甲','精金甲','秘银甲'],头盔:['铁头盔','战士盔','英雄盔','传奇盔'],饰品:['护符','符文石','魔力环','命运石']};
@@ -348,16 +321,16 @@ function upgradeG(t){
 }
 
 function ascendG(t){
-  const g=ensureGearState(eq[t]);if(!g||g.rarity>=4){showToast(!g?'无装备':'已传说');return;}
+  const g=ensureGearState(eq[t]);if(!g){showToast('无装备');return;}
   const mat=bag.find(x=>x.type===t&&x.rarity===g.rarity);
   if(!mat){showToast('背包需1件同部位同品质');return;}
   bag=bag.filter(x=>x.id!==mat.id);
-  const ng=rollGear(g.rarity+1,G?G.wave:1,false,t);
+  const ng=rollGear(g.rarity,G?G.wave:1,false,t);
   ng.lv=g.lv;
   applyGearLevel(ng);
   eq[t]=ng;
   if(G){const nm=getMxHp();G.hp=Math.min(G.hp+(nm-G.maxHp),nm);G.maxHp=nm;}
-  showToast(t+' 升阶! '+RAR[ng.rarity].n);updHUD();if(curTab==='gear')renderGear();
+  showToast(t+' 升阶重铸! '+RAR[ng.rarity].n);updHUD();if(curTab==='gear')renderGear();
 }
 
 function equipG(g){
@@ -372,8 +345,23 @@ function equipG(g){
 const MT=['archer','knight','mage','healer'];
 const MM={archer:{n:'弓箭手',ic:'A',d:'追踪连射'},knight:{n:'骑士',ic:'K',d:'护盾震荡'},mage:{n:'法师',ic:'M',d:'AOE魔法'},healer:{n:'牧师',ic:'H',d:'神圣回复'}};
 let mD={archer:null,knight:null,mage:null,healer:null},mAct=[],mCl={archer:0,knight:0,mage:0,healer:0};
-function mCD(t){const d=mD[t];if(!d)return 9999;const b={archer:40,knight:150,mage:100,healer:180};return Math.max(t==='healer'?80:10,b[t]-(d.ri+d.lv)*12);}
-function mPow(t){const d=mD[t];if(!d)return 1;return 1+(d.ri+d.lv)*0.9;}
+function ensureMinionData(d){
+  if(!d)return d;
+  if(d.lvl==null)d.lvl=d.lv||0;
+  if(d.rank==null)d.rank=0;
+  if(d.sh==null)d.sh=0;
+  return d;
+}
+function mCD(t){
+  const d=ensureMinionData(mD[t]);if(!d)return 9999;
+  const b={archer:40,knight:150,mage:100,healer:180};
+  const rankReduce={archer:0,knight:22,mage:0,healer:24};
+  return Math.max(t==='healer'?70:10,b[t]-d.ri*10-d.rank*rankReduce[t]);
+}
+function mPow(t){
+  const d=ensureMinionData(mD[t]);if(!d)return 1;
+  return 1+d.ri*0.9+d.lvl*0.75+d.rank*0.4;
+}
 
 function doGacha(n){
   const cost=n*5;if(P.rc<cost){showToast('转生币不足需'+cost);return;}P.rc-=cost;
@@ -384,9 +372,12 @@ function doGacha(n){
     for(let j=0;j<5;j++)if(r<cum[j]){ri=j;break;}
     res.push({t,ri});
     const c=mD[t];
-    if(!c)mD[t]={ri,lv:0,sh:0};
-    else if(ri>c.ri)mD[t].ri=ri;
-    else if(ri===4)mD[t].sh++;
+    if(!c)mD[t]={ri,lvl:0,rank:0,sh:0};
+    else{
+      ensureMinionData(c);
+      if(ri>c.ri)c.ri=ri;
+      else if(ri===4)c.sh++;
+    }
   }
   const best=res.reduce((a,b)=>b.ri>a.ri?b:a);
   showToast('抽'+n+'张 最高:'+RAR[best.ri].n+' '+MM[best.t].n);
@@ -394,15 +385,15 @@ function doGacha(n){
 }
 
 function upgM(t){
-  const d=mD[t];if(!d||d.ri<4){showToast('需传说品质');return;}
-  const need=Math.pow(2,d.lv);if(d.sh<need){showToast('碎片不足需'+need);return;}
-  d.sh-=need;d.lv++;showToast(MM[t].n+' 升阶+'+d.lv);if(curTab==='minion')renderMinion();
+  const d=ensureMinionData(mD[t]);if(!d){showToast('未拥有');return;}
+  const need=Math.pow(5,d.rank);if(d.sh<need){showToast('碎片不足需'+need);return;}
+  d.sh-=need;d.rank++;showToast(MM[t].n+' 升阶+'+d.rank);if(curTab==='minion')renderMinion();
 }
 
 function lvlM(t){
-  const d=mD[t];if(!d){showToast('未拥有');return;}
-  const cost=(d.lv+d.ri+1)*500;if(P.gold<cost){showToast('需'+cost+'金');return;}
-  P.gold-=cost;d.lv++;showToast(MM[t].n+' Lv'+d.lv);updHUD();if(curTab==='minion')renderMinion();
+  const d=ensureMinionData(mD[t]);if(!d){showToast('未拥有');return;}
+  const cost=(d.lvl+d.ri+1)*500;if(P.gold<cost){showToast('需'+cost+'金');return;}
+  P.gold-=cost;d.lvl++;showToast(MM[t].n+' 强化Lv'+d.lvl);updHUD();if(curTab==='minion')renderMinion();
 }
 
 function toggleMA(t){
@@ -412,18 +403,18 @@ function toggleMA(t){
 }
 
 function mActFn(type,mx,my){
-  const d=mD[type];if(!d)return;
+  const d=ensureMinionData(mD[type]);if(!d)return;
   const ri=d.ri,pow=mPow(type);
   if(type==='archer'){
     if(!enemies.length)return;
     const tgt=enemies.reduce((a,b)=>a.y>b.y?a:b);
     const dx=tgt.x-mx,dy=tgt.y-my,dl=Math.hypot(dx,dy);if(dl===0)return;
-    const arrows=1+ri+(d.lv>=2?d.lv:0),spr=0.05*(ri+d.lv*.5),dmg=getAtk()*pow*(3+ri*2);
+    const arrows=1+ri+d.rank,spr=0.05*(ri+d.rank*.7),dmg=getAtk()*pow*(3+ri*2);
     for(let i=0;i<arrows;i++){const a=(i-(arrows-1)/2)*spr,cs=Math.cos(a),sn=Math.sin(a);pB.push({x:mx,y:my,vx:(dx/dl*13)*cs-(dy/dl*13)*sn,vy:(dy/dl*13)*cs+(dx/dl*13)*sn,dmg,crit:.15+ri*.04,cd:1.6,pr:0,ph:0,col:RAR[ri].c,aoe:ri>=4?35:0,sp:0});}
-    if(ri+d.lv>=3)for(let i=0;i<12;i++)parts.push({x:mx,y:my,vx:(Math.random()-.5)*7,vy:(Math.random()-.5)*7,life:.8,color:RAR[ri].c,sz:2+ri,glow:true,txt:null});
+    if(ri+d.rank>=3)for(let i=0;i<12;i++)parts.push({x:mx,y:my,vx:(Math.random()-.5)*7,vy:(Math.random()-.5)*7,life:.8,color:RAR[ri].c,sz:2+ri,glow:true,txt:null});
   }else if(type==='knight'){
-    const sh=2+ri*2+d.lv*3;G.shield=Math.min(G.shield+sh,sh*2);
-    const range=50+(ri+d.lv)*25,dmg=getAtk()*pow*(2+ri*2);
+    const sh=2+ri*2+d.rank*2+d.lvl*2;G.shield+=sh;
+    const range=50+(ri+d.rank)*25,dmg=getAtk()*pow*(2+ri*2);
     enemies.forEach(e=>{if(Math.hypot(e.x-PL.x,e.y-PL.y)<range){e.hp-=dmg;spP(e.x,e.y,RAR[ri].c,4);}});
     for(let i=0;i<16;i++){const a=Math.random()*Math.PI*2,r2=Math.random()*range;parts.push({x:PL.x+Math.cos(a)*r2,y:PL.y+Math.sin(a)*r2,vx:Math.cos(a)*2,vy:Math.sin(a)*2,life:.7,color:RAR[ri].c,sz:3,glow:ri>=3,txt:null});}
     showToast('骑士护盾+'+sh);
@@ -431,15 +422,15 @@ function mActFn(type,mx,my){
     if(!enemies.length)return;
     const tgt=enemies.reduce((a,b)=>a.y>b.y?a:b);
     const dx=tgt.x-mx,dy=tgt.y-my,dl=Math.hypot(dx,dy);if(dl===0)return;
-    const aoe=60+(ri+d.lv)*20,dmg=getAtk()*pow*(8+ri*5+d.lv*3),shots=1+(ri>=2?1:0)+(d.lv>=3?1:0);
+    const aoe=60+ri*20+d.rank*35,dmg=getAtk()*pow*(8+ri*5),shots=1+(ri>=2?1:0);
     for(let k=0;k<shots;k++){const a=k*(Math.PI*2/shots),cs=Math.cos(a),sn=Math.sin(a);pB.push({x:mx,y:my,vx:(dx/dl*7)*cs-(dy/dl*7)*sn,vy:(dy/dl*7)*cs+(dx/dl*7)*sn,dmg,crit:.2,cd:2,pr:99,ph:0,col:RAR[ri].c,aoe,big:true,sp:0});}
-    for(let i=0;i<20;i++){const a=i/20*Math.PI*2,r2=25+(ri+d.lv)*8;parts.push({x:mx+Math.cos(a)*r2,y:my+Math.sin(a)*r2,vx:Math.cos(a)*.5,vy:Math.sin(a)*.5,life:1.2,color:RAR[ri].c,sz:3,glow:true,txt:null});}
+    for(let i=0;i<20;i++){const a=i/20*Math.PI*2,r2=25+(ri+d.rank)*8;parts.push({x:mx+Math.cos(a)*r2,y:my+Math.sin(a)*r2,vx:Math.cos(a)*.5,vy:Math.sin(a)*.5,life:1.2,color:RAR[ri].c,sz:3,glow:true,txt:null});}
   }else if(type==='healer'){
-    const miss=G.maxHp-G.hp,base=8+ri*8+d.lv*6,heal=d.lv>=2?base+miss*.04*(d.lv-1):base;
+    const base=8+ri*8,heal=base*pow;
     G.hp=Math.min(G.maxHp,G.hp+heal);
     for(let i=0;i<10+ri*4;i++){const a=Math.random()*Math.PI*2,r2=Math.random()*(40+ri*14);parts.push({x:PL.x+Math.cos(a)*r2,y:PL.y+Math.sin(a)*r2,vx:0,vy:-1.5,life:1,color:RAR[ri].c,sz:2+ri,glow:true,txt:null});}
     parts.push({x:PL.x,y:PL.y-20,vx:0,vy:-.8,life:1.4,color:RAR[ri].c,sz:2,glow:false,txt:'+'+Math.round(heal)+'HP'});
-    if(ri+d.lv>=4)eB=eB.filter(b=>Math.hypot(b.x-PL.x,b.y-PL.y)>80);
+    if(ri+d.rank>=4)eB=eB.filter(b=>Math.hypot(b.x-PL.x,b.y-PL.y)>80);
   }
 }
 
@@ -486,15 +477,17 @@ const ET=[
   {n:'飞碟侦察者',w:28,h:18,hp:4,spd:.5,exp:28,cn:14,col:'#2dd4bf',shape:'ufo',sI:75,bS:3,bP:'spiral'},
   {n:'异星暴君',w:52,h:40,hp:40,spd:.22,exp:300,cn:120,col:'#FFE066',shape:'boss',sI:30,bS:3,bP:'boss'},
 ];
+function bossStageFactor(w){
+  return Math.pow(10,Math.floor((w-1)/5));
+}
 function wDiff(w){return 1+Math.pow(w-1,.65)*.6;}
 function eM(w){return {hp:1+w*.18,spd:1+w*.08,dmg:1+w*.35+Math.pow(Math.max(0,w-1),1.2)*.14,cn:1+w*.1};}
 function buildQ(waveNo){
-  const q=[],em=eM(waveNo);
+  const q=[],em=eM(waveNo),bossFactor=bossStageFactor(waveNo);
   if(waveNo%5===0){
     const b={...ET[4]};
-    // BOSS血量随波数快速增加
-    b.hp=Math.round(b.hp*Math.pow(1.8,Math.floor(waveNo/5))*em.hp);
-    b.maxHp=b.hp;b.spd*=em.spd;b.bS*=Math.pow(1.06,waveNo);b.cn=Math.round(b.cn*em.cn);
+    b.hp=Math.round(b.hp*Math.pow(1.8,Math.floor(waveNo/5))*em.hp*bossFactor);
+    b.maxHp=b.hp;b.spd*=em.spd*bossFactor;b.bS*=Math.pow(1.06,waveNo)*bossFactor;b.cn=Math.round(b.cn*em.cn*bossFactor);b.exp=Math.round(b.exp*bossFactor);
     q.push(b);return q;
   }
   const diff=wDiff(waveNo),avail=Math.min(4,1+Math.floor((waveNo-1)/2)),pool=ET.slice(0,avail);
@@ -504,11 +497,12 @@ function buildQ(waveNo){
   for(let i=0;i<total;i++){
     const t={...pool[Math.floor(Math.random()*pool.length)]};
     // 属性大幅度提升
-    t.hp=Math.round(t.hp*diff*em.hp);
+    t.hp=Math.round(t.hp*diff*em.hp*bossFactor);
     t.maxHp=t.hp;
-    t.spd*=em.spd;
-    t.bS*=Math.pow(1.05,G.wave);
-    t.cn=Math.round(t.cn*em.cn);
+    t.spd*=em.spd*bossFactor;
+    t.bS*=Math.pow(1.05,waveNo)*bossFactor;
+    t.cn=Math.round(t.cn*em.cn*bossFactor);
+    t.exp=Math.round(t.exp*bossFactor);
     q.push(t);
   }
   return q.sort(()=>Math.random()-.5);
@@ -540,7 +534,7 @@ function spE(t){
 }
 
 function fireE(e){
-  const sp=e.bS,dm=eM(G.wave).dmg;
+  const sp=e.bS,dm=eM(G.wave).dmg*bossStageFactor(G.wave);
   if(e.bP==='single'){eB.push({x:e.x,y:e.y+e.h/2,vx:0,vy:sp,color:e.col,r:3,dm});}
   else if(e.bP==='aimed'){const dx=PL.x-e.x,dy=PL.y-e.y,d=Math.hypot(dx,dy);if(d>0)eB.push({x:e.x,y:e.y,vx:dx/d*sp,vy:dy/d*sp,color:e.col,r:3,dm});}
   else if(e.bP==='spread'){[-0.38,0,0.38].forEach(a=>eB.push({x:e.x,y:e.y+e.h/2,vx:Math.sin(a)*sp,vy:Math.cos(a)*sp,color:e.col,r:4,dm}));}
@@ -866,7 +860,7 @@ function tick(ts){
   });
 
   // 掉落物
-  const mag=SK.mag;
+  const mag=SK.mag*60;
   drops=drops.filter(d=>{
     d.y+=d.vy*dt;if(d.y>H+30)return false;
     if(mag>0){const ddx=PL.x-d.x,ddy=PL.y-d.y,dd=Math.hypot(ddx,ddy);if(dd<mag){d.x+=ddx/dd*3.5*dt;d.y+=ddy/dd*3.5*dt;}}
@@ -911,7 +905,7 @@ function tick(ts){
     G.triggerWave=G.maxWaveStarted;
   }
   if((G.wState==='waiting'||G.wState==='spawning')&&enemies.length===0&&G.wLeft<=0&&wQ.length===0){
-    if(SK.regen>0)G.hp=Math.min(getMxHp(),G.hp+SK.regen);
+    if(SK.regen>0)G.hp=Math.min(getMxHp(),G.hp+SK.regen*15);
     G.waveSizes={};
     showWB('波次 '+G.wave+' 清除！');updHUD();G.wState='pause';G.wPause=18;
   }
@@ -974,26 +968,24 @@ function tick(ts){
   if(G.fr%28===0)updHUD();
 
   // 人物升级检查
-  if(playerExp >= expToNext){
+  while(playerExp >= expToNext){
     playerLevel++;
     playerExp -= expToNext;
+    P.sp++;
     expToNext = 50 + (playerLevel - 1) * 100;
-    showToast('升级到 Lv.' + playerLevel + '!');
-    showCards(1,'等级 ' + playerLevel + ' 奖励',()=>{});
+    showToast('升级到 Lv.' + playerLevel + '，技能点+1');
+    updHUD();
   }
 }
 
 function endGame(){
   stopLoop();
   G.state='dead';
-  SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0};
-  skillPickCount=0;
-  skillCaps={ms:0,pr:0,crit:0,mag:0};
   const bN=Math.floor(P.clearedWave/5);
-  const rebirthGain=bN>=1?bN*bN:0;
+  const rebirthGain=(bN>=1?Math.pow(bN,3):0)+playerLevel;
   CT.fillStyle='rgba(0,0,0,.82)';CT.fillRect(0,0,W,H);
   CT.fillStyle='#FF6B6B';CT.font='bold 26px monospace';CT.textAlign='center';CT.fillText('GAME OVER',W/2,H/2-50);
-  CT.fillStyle='#FFE066';CT.font='14px monospace';CT.fillText('等级: '+playerLevel+'  经验: '+playerExp,W/2,H/2-16);
+  CT.fillStyle='#FFE066';CT.font='14px monospace';CT.fillText('等级: '+playerLevel+'  经验: '+playerExp+'  技能点: '+P.sp,W/2,H/2-16);
   CT.fillStyle='#7DF9AA';CT.font='12px monospace';CT.fillText('金币: '+Math.round(P.gold)+'  波次: '+G.wave,W/2,H/2+6);
   CT.fillStyle='#c084fc';CT.font='11px monospace';CT.fillText('转生币: '+P.rc+'（可获得+'+rebirthGain+'）',W/2,H/2+26);
   const ctrls=document.getElementById('ctrls');
@@ -1002,15 +994,13 @@ function endGame(){
 }
 
 function doRebirth(gain){
-  // 增加转生币奖励，并重置已通关记录。
   P.rc += gain;
   P.clearedWave = 0;
+  P.sp = 0;
+  SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0};
+  playerLevel=1;playerExp=0;expToNext=50;
   initWeapons();
-
-  // 清空所有装备（所有槽位）和背包。
   eq = {武器:null, 护甲:null, 头盔:null, 饰品:null};
-
-  // 恢复菜单按钮，跳回界面
   document.getElementById('ctrls').innerHTML = '<button id="btn" onclick="startGame()">开始游戏</button><button onclick="ST(\"minion\")">仆从</button><button onclick="ST(\"gear\")">装备</button>';
   updHUD();
   ST('game');
@@ -1042,40 +1032,20 @@ function startGame(){
   document.getElementById('cardOv').className='';
   document.getElementById('skipOv').className='';
 
-  // 重置每局数据（金币在P.gold中持久保存）
-  SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0};
-  skillPickCount=0;
-  skillCaps={ms:0,pr:0,crit:0,mag:0};
-  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:0,fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0};
+  G={state:'playing',score:0,wave:0,hp:0,maxHp:0,shield:getBaseShield(),fr:0,lt:0,mx:W/2,my:H-70,sCool:0,wState:'pause',wPause:12,wLeft:0,wTotal:0,sRT:0,laserCool:0,laserActive:false,laserTimer:0,laserTids:[],laserDmgCools:[],waveSizes:{},maxWaveStarted:0,triggerWave:0};
   G.maxHp=getMxHp();G.hp=G.maxHp;
   cZ=[];wQ=[];spT=0;
   PL={x:W/2,y:H-70,inv:0,wf:0,dir:1};
   pB=[];eB=[];enemies=[];parts=[];drops=[];
   MT.forEach(k=>mCl[k]=0);
-  playerLevel=1;playerExp=0;expToNext=50;
   document.getElementById('btn').style.display='none';
   document.getElementById('ctrls').innerHTML='<button onclick="giveUp()" style="color:#FF6B6B">放弃</button>';
   ST('game');updHUD();
 
   const target=P.clearedWave>=5?Math.floor(P.clearedWave/5)*5+1:0;
   if(target>1){
-    const bossCount=Math.floor((target-1)/5);
-    const skipLevels = target - 1;
-    const expGain = skipLevels * 100; // 每关平均100经验
-    // 先启动loop（可以显示背景），然后跑跳关动画
     startLoop();
     runSkip(target,()=>{
-      playerExp += expGain;
-      // 一次性获得经验后更新等级
-      while(playerExp >= expToNext){
-        playerLevel++;
-        playerExp -= expToNext;
-        expToNext = 50 + (playerLevel - 1) * 100;
-      }
-      const cardCount = playerLevel; // 获得技能卡牌次数等于等级
-      if(cardCount>0){
-        showCards(cardCount,'跳关奖励（等级 '+playerLevel+'）',()=>{});
-      }
       G.wave=target-1;
       G.maxWaveStarted=G.wave;
       G.triggerWave=G.wave;
@@ -1083,7 +1053,7 @@ function startGame(){
       G.wPause=8;
     });
   }else{
-    showCards(1,'游戏开始奖励',()=>{});
+    startLoop();
   }
 }
 
@@ -1091,21 +1061,17 @@ function startGame(){
 let curTab='game';
 function ST(tab){
   curTab=tab;
-  // 任何切换都要关闭卡牌弹窗，只有战斗界面可见技能卡
   document.getElementById('cardOv').className='';
-  document.getElementById('skillOv').style.display = tab === 'game' && hasSkillCards ? 'flex' : 'none';
+  document.getElementById('skillOv').style.display = 'none';
   document.getElementById('skipOv').className='';
   ['game','minion','gear','skill'].forEach(t=>document.getElementById('tab-'+t).className='tab'+(t===tab?' on':''));
   CV.style.display=tab==='game'?'block':'none';
   const rp=document.getElementById('rp');rp.className=tab!=='game'?'rightPanel show':'rightPanel';
 
-  // 切换到游戏页面时，如果不是死亡状态则恢复循环；切换出去则暂停循环
   if(tab === 'game'){
     if(G && G.state !== 'dead'){
-      if(!hasSkillCards){
-        G.state = 'playing';
-        startLoop();
-      }
+      G.state = 'playing';
+      startLoop();
     }
   } else {
     stopLoop();
@@ -1120,29 +1086,29 @@ function mkSec(par,txt){const s=document.createElement('div');s.className='sec';
 function renderMinion(){
   const rp=document.getElementById('rp');rp.innerHTML='';
   mkSec(rp,'仆从抽卡（转生币）');
-  const qi=document.createElement('div');qi.style='color:#c084fc;font-size:11px;margin-bottom:7px';qi.textContent='转生币: '+P.rc+'  死亡后获得 boss数量² 个';rp.appendChild(qi);
+  const qi=document.createElement('div');qi.style='color:#c084fc;font-size:11px;margin-bottom:7px';qi.textContent='转生币: '+P.rc+'  死亡后获得 boss数量³ + 人物等级';rp.appendChild(qi);
   const gr=document.createElement('div');gr.style='display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap';
   [[1,5,'单抽'],[5,20,'五连'],[10,35,'十连']].forEach(([n,c,l])=>{const b=document.createElement('button');b.style='font-size:11px;color:'+(P.rc>=c?'#FFE066':'#444');b.textContent=l+'('+c+'币)';b.onclick=()=>doGacha(n);gr.appendChild(b);});rp.appendChild(gr);
   const qr=document.createElement('div');qr.style='display:flex;gap:3px;margin-bottom:7px;flex-wrap:wrap';
   RAR.forEach(r=>{const d=document.createElement('div');d.style='background:'+r.bg+';border:1px solid '+r.b+';border-radius:3px;padding:2px 6px;font-size:10px;color:'+r.c;d.textContent=r.n;qr.appendChild(d);});rp.appendChild(qr);
   mkSec(rp,'已拥有（最多出战4个）');
   MT.forEach(type=>{
-    const d=mD[type],isA=mAct.includes(type);
+    const d=ensureMinionData(mD[type]),isA=mAct.includes(type);
     const card=document.createElement('div');card.className='mc'+(isA?' on':'');if(d)card.style.borderColor=RAR[d.ri].b;
-    const sN=d&&d.ri===4?Math.pow(2,d.lv):0;
+    const sN=d?Math.pow(5,d.rank):0;
     card.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
       +'<div style="display:flex;gap:7px;align-items:center">'
       +'<span style="font-size:18px;color:'+(d?RAR[d.ri].c:'#222')+'">'+MM[type].ic+'</span>'
-      +'<div><div style="color:'+(d?RAR[d.ri].c:'#333')+';font-size:12px;font-weight:500">'+MM[type].n+(d?' ['+RAR[d.ri].n+(d.lv>0?' +'+d.lv:'')+(d.ri===4?' 碎'+d.sh+'/'+sN:'')+']':'  未获得')+(isA?' <span style="color:#7DF9AA;font-size:9px">出战</span>':'')+'</div>'
+      +'<div><div style="color:'+(d?RAR[d.ri].c:'#333')+';font-size:12px;font-weight:500">'+MM[type].n+(d?' ['+RAR[d.ri].n+' 强化'+d.lvl+' 升阶'+d.rank+' 碎'+d.sh+'/'+sN+']':'  未获得')+(isA?' <span style="color:#7DF9AA;font-size:9px">出战</span>':'')+'</div>'
       +'<div style="color:#2a2a2a;font-size:9px">'+MM[type].d+'</div>'
-      +(d?'<div style="color:'+RAR[d.ri].c+';font-size:9px">强度x'+mPow(type).toFixed(1)+' 强化:'+(d.lv+d.ri+1)*500+'金</div>':'')
+      +(d?'<div style="color:'+RAR[d.ri].c+';font-size:9px">强度x'+mPow(type).toFixed(1)+' 强化:'+(d.lvl+d.ri+1)*500+'金</div><div style="color:#555;font-size:9px">'+(type==='archer'?'碎片升阶增加弹道':type==='knight'?'碎片升阶减少护盾冷却':type==='mage'?'碎片升阶增加爆炸范围':'碎片升阶增加回复速度')+'</div>':'')
       +'</div></div>'
       +'<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">'
       +(d&&!isA&&mAct.length<4?'<button onclick="toggleMA(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#7DF9AA">出战</button>':'')
       +(isA?'<button onclick="toggleMA(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#555">收回</button>':'')
       +(d?'<button onclick="lvlM(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#FFE066">强化</button>':'')
-      +(d&&d.ri===4&&d.sh>=sN?'<button onclick="upgM(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#fb923c">升阶</button>':'')
+      +(d&&d.sh>=sN?'<button onclick="upgM(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#fb923c">升阶</button>':'')
       +'</div></div>';
     rp.appendChild(card);
   });
@@ -1173,7 +1139,7 @@ function renderGear(){
       +(g.wsuit?'<div style="font-size:9px;color:#FFE066">武器套: '+g.wsuit+'</div>':'')
       +'<div style="display:flex;gap:5px;margin-top:5px">'
       +'<button onclick="upgradeG(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#FFE066">强化('+(lv+1)*300+'金)</button>'
-      +'<button onclick="ascendG(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#c084fc">升阶(消耗1件同品质)</button></div>';
+      +'<button onclick="ascendG(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#c084fc">升阶重铸(消耗1件同品质)</button></div>';
   }else{eqDiv.style='border:1px solid #1a1a1a;border-radius:5px;padding:8px;color:#222;font-size:11px';eqDiv.textContent=type+' 槽位为空';}
   rp.appendChild(eqDiv);
   mkSec(rp,'背包 - '+type);
@@ -1217,20 +1183,27 @@ function sellAll(t){let c=0,v=0;bag=bag.filter(g=>{if(g.type===t){v+=5+g.rarity*
 
 function renderSkill(){
   const rp=document.getElementById('rp');rp.innerHTML='';
-
-  // 只有战斗中才能显示技能详情
-  if(!G||G.state!=='playing'){
-    mkSec(rp,'技能卡牌');
-    const em=document.createElement('div');em.style='color:#2a2a2a;font-size:11px;padding:10px';em.textContent='❌ 只有在战斗中才能选择技能';rp.appendChild(em);
-    return;
-  }
-  mkSec(rp,'当前技能（本局，死亡清零）');
-  const entries=Object.entries(SK).filter(([k,v])=>v>0);
-  if(!entries.length){const em=document.createElement('div');em.style='color:#1a1a1a;font-size:11px;padding:10px';em.textContent='本局尚无技能，通关BOSS后弹出3张卡牌选择';rp.appendChild(em);}
-  else entries.forEach(([k,v])=>{const d=document.createElement('div');d.style='background:#0a0a14;border:1px solid #1a2a1a;border-radius:4px;padding:6px;margin-bottom:4px;font-size:11px;color:#7DF9AA';d.textContent=k+': +'+(Math.round(v*100)/100);rp.appendChild(d);});
-  mkSec(rp,'说明');
-  const info=document.createElement('div');info.style='color:#2a2a2a;font-size:10px;line-height:1.8';
-  info.textContent='每通关一个BOSS暂停游戏，弹出3张卡牌选1张。跳关时按跳过的BOSS数连续选择。全局最多选20次；磁铁、暴击强化、穿透、多重射击各最多5级，并会优先刷新。卡牌不足3张时用+1%充数补齐。死亡后全部清零。';rp.appendChild(info);
+  mkSec(rp,'技能点');
+  const head=document.createElement('div');
+  head.style='color:#FFE066;font-size:12px;line-height:1.8;margin-bottom:8px';
+  head.textContent='当前技能点: '+P.sp+'  |  当前等级: Lv.'+playerLevel+'  |  每升1级获得1技能点';
+  rp.appendChild(head);
+  const tips=document.createElement('div');
+  tips.style='color:#555;font-size:10px;line-height:1.8;margin-bottom:8px';
+  tips.textContent='技能只有转生才会重置。有限技能首购消耗10技能点，此后同一技能每买一次价格乘10；无限技能首购只需1技能点，之后每次价格乘2。磁铁、多重射击、穿透、暴击、护盾最多购买5次，其他技能可无限购买。';
+  rp.appendChild(tips);
+  const grid=document.createElement('div');grid.className='g2';
+  SKILL_ORDER.forEach(key=>{
+    const meta=SKILL_META[key],rank=SK[key]||0,cap=getSkillCap(key),maxed=rank>=cap,cost=getSkillCost(key);
+    const card=document.createElement('div');
+    card.style='background:#0a0a14;border:1px solid '+(maxed?'#1f3f2a':'#1a1a2a')+';border-radius:5px;padding:8px';
+    card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="color:#7DF9AA;font-size:15px">'+meta.ic+'</span><span style="color:'+(maxed?'#4ade80':'#666')+';font-size:10px">Lv.'+rank+(cap<Infinity?'/'+cap:'')+'</span></div>'
+      +'<div style="color:#eee;font-size:11px;font-weight:500">'+meta.n+'</div>'
+      +'<div style="color:#555;font-size:9px;line-height:1.5;margin:4px 0 6px">'+meta.d+'</div>'
+      +'<button onclick="buySkill(\''+key+'\')" style="width:100%;font-size:10px;padding:4px 6px;color:'+(maxed?'#4ade80':P.sp>=cost?'#FFE066':'#666')+'">'+(maxed?'已满级':'购买('+cost+'点)')+'</button>';
+    grid.appendChild(card);
+  });
+  rp.appendChild(grid);
 }
 
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.opacity=1;clearTimeout(t._t);t._t=setTimeout(()=>t.style.opacity=0,1900);}
@@ -1241,7 +1214,7 @@ function updHUD(){
   document.getElementById('hpf').style.width=pct+'%';document.getElementById('hpf').style.background=pct>60?'#4ade80':pct>30?'#FFE066':'#FF6B6B';
   document.getElementById('hpt').textContent=Math.round(hp)+'/'+mh;
   document.getElementById('tc').textContent=Math.round(P.gold);document.getElementById('rc').textContent=P.rc;
-  document.getElementById('sc').textContent='Lv.'+playerLevel+' Exp:'+playerExp+'/'+expToNext;document.getElementById('hi').textContent='';document.getElementById('wv').textContent=G?G.wave:1;
+  document.getElementById('sc').textContent='Lv.'+playerLevel+' Exp:'+playerExp+'/'+expToNext+' SP:'+P.sp;document.getElementById('hi').textContent='';document.getElementById('wv').textContent=G?G.wave:1;
 }
 
 function syncPointer(clientX,clientY){
@@ -1267,8 +1240,8 @@ CV.addEventListener('touchend',e=>{if(e.cancelable)e.preventDefault();},{passive
 // ═══ 初始化：只画一帧，绝不启动 loop ═══
 initStars();drawBg(1);
 CT.fillStyle='#7DF9AA';CT.font='bold 20px monospace';CT.textAlign='center';CT.fillText('像素射击战 v6',W/2,H/2-32);
-CT.fillStyle='#555';CT.font='12px monospace';CT.fillText('技能卡牌 | 开局无初始武器 | 转生币抽卡',W/2,H/2);
-CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('金币拾取 | 半波连刷 | BOSS后选技能',W/2,H/2+22);
+CT.fillStyle='#555';CT.font='12px monospace';CT.fillText('技能点养成 | 开局无初始武器 | 转生币抽卡',W/2,H/2);
+CT.fillStyle='#FFE066';CT.font='10px monospace';CT.fillText('金币拾取 | 半波连刷 | 技能只在转生时重置',W/2,H/2+22);
 updHUD();
 
 // 初始化背包（开局不再赠送武器）
