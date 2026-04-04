@@ -118,7 +118,7 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 const CV=document.getElementById('c'),CT=CV.getContext('2d'),W=500,H=640;
 
 // ═══ 持久数据 ═══
-const P={rc:0,clearedWave:0,gold:0,sp:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
+const P={rc:5,clearedWave:0,gold:0,sp:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
 
 // ═══ 每局数据（startGame重建） ═══
 let G=null,PL=null;
@@ -137,7 +137,7 @@ function stopLoop(){
 }
 
 // ═══ 人物等级和经验 ═══
-let playerLevel=1,playerExp=0,expToNext=50;
+let playerLevel=0,playerExp=0,expToNext=50;
 
 // ═══ 技能（持久，转生清零） ═══
 let SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0};
@@ -354,18 +354,32 @@ function ensureMinionData(d){
 }
 function mCD(t){
   const d=ensureMinionData(mD[t]);if(!d)return 9999;
-  const b={archer:40,knight:150,mage:100,healer:180};
-  const rankReduce={archer:0,knight:22,mage:0,healer:24};
-  return Math.max(t==='healer'?70:10,b[t]-d.ri*10-d.rank*rankReduce[t]);
+  const b={archer:40,knight:720,mage:100,healer:180};
+  const rankReduce={archer:0,knight:45,mage:0,healer:24};
+  const minCd={archer:10,knight:300,mage:10,healer:70};
+  return Math.max(minCd[t],b[t]-d.ri*10-d.rank*rankReduce[t]);
 }
 function mPow(t){
   const d=ensureMinionData(mD[t]);if(!d)return 1;
   return 1+d.ri*0.9+d.lvl*0.75+d.rank*0.4;
 }
+function autoRankMinion(t,silent){
+  const d=ensureMinionData(mD[t]);if(!d)return 0;
+  let gained=0;
+  while(d.sh>=Math.pow(5,d.rank)){
+    d.sh-=Math.pow(5,d.rank);
+    d.rank++;
+    gained++;
+  }
+  if(gained>0&&!silent)showToast(MM[t].n+' 自动升阶+'+d.rank);
+  return gained;
+}
 
 function doGacha(n){
   const cost=n*5;if(P.rc<cost){showToast('转生币不足需'+cost);return;}P.rc-=cost;
   const res=[];
+  const shardGain={archer:0,knight:0,mage:0,healer:0};
+  const rankGain={archer:0,knight:0,mage:0,healer:0};
   for(let i=0;i<n;i++){
     const t=MT[Math.floor(Math.random()*4)];
     const cum=[40,70,88,97,100];let ri=0,r=Math.random()*100;
@@ -376,11 +390,16 @@ function doGacha(n){
     else{
       ensureMinionData(c);
       if(ri>c.ri)c.ri=ri;
-      else if(ri===4)c.sh++;
+      else{
+        c.sh++;
+        shardGain[t]++;
+        rankGain[t]+=autoRankMinion(t,true);
+      }
     }
   }
   const best=res.reduce((a,b)=>b.ri>a.ri?b:a);
-  showToast('抽'+n+'张 最高:'+RAR[best.ri].n+' '+MM[best.t].n);
+  const gainTxt=MT.filter(t=>shardGain[t]||rankGain[t]).map(t=>MM[t].n+(shardGain[t]?'+碎片'+shardGain[t]:'')+(rankGain[t]?'+升阶'+rankGain[t]:'')).join(' ');
+  showToast('抽'+n+'张 最高:'+RAR[best.ri].n+' '+MM[best.t].n+(gainTxt?' | '+gainTxt:''));
   updHUD();if(curTab==='minion')renderMinion();
 }
 
@@ -420,11 +439,12 @@ function mActFn(type,mx,my){
     showToast('骑士护盾+'+sh);
   }else if(type==='mage'){
     if(!enemies.length)return;
-    const tgt=enemies.reduce((a,b)=>a.y>b.y?a:b);
-    const dx=tgt.x-mx,dy=tgt.y-my,dl=Math.hypot(dx,dy);if(dl===0)return;
-    const aoe=60+ri*20+d.rank*35,dmg=getAtk()*pow*(8+ri*5),shots=1+(ri>=2?1:0);
-    for(let k=0;k<shots;k++){const a=k*(Math.PI*2/shots),cs=Math.cos(a),sn=Math.sin(a);pB.push({x:mx,y:my,vx:(dx/dl*7)*cs-(dy/dl*7)*sn,vy:(dy/dl*7)*cs+(dx/dl*7)*sn,dmg,crit:.2,cd:2,pr:99,ph:0,col:RAR[ri].c,aoe,big:true,sp:0});}
-    for(let i=0;i<20;i++){const a=i/20*Math.PI*2,r2=25+(ri+d.rank)*8;parts.push({x:mx+Math.cos(a)*r2,y:my+Math.sin(a)*r2,vx:Math.cos(a)*.5,vy:Math.sin(a)*.5,life:1.2,color:RAR[ri].c,sz:3,glow:true,txt:null});}
+    const tgt=enemies.reduce((a,b)=>a.hp<b.hp?a:b);
+    const aoe=60+ri*20+d.rank*35,dmg=getAtk()*pow*(8+ri*5);
+    const ex=tgt.x,ey=tgt.y-tgt.h/2-8;
+    enemies.forEach(oe=>{if(Math.hypot(oe.x-ex,oe.y-ey)<aoe){oe.hp-=dmg;spP(oe.x,oe.y,RAR[ri].c,5);}});
+    for(let i=0;i<24;i++){const a=i/24*Math.PI*2,r2=8+Math.random()*aoe*.4;parts.push({x:ex+Math.cos(a)*r2,y:ey+Math.sin(a)*r2,vx:Math.cos(a)*1.2,vy:Math.sin(a)*1.2,life:1.1,color:RAR[ri].c,sz:3,glow:true,txt:null});}
+    parts.push({x:ex,y:ey-10,vx:0,vy:-.5,life:0.9,color:RAR[ri].c,sz:2,glow:false,txt:'爆'});
   }else if(type==='healer'){
     const base=8+ri*8,heal=base*pow;
     G.hp=Math.min(G.maxHp,G.hp+heal);
@@ -1041,7 +1061,7 @@ function doRebirth(gain){
   P.clearedWave = 0;
   P.sp = 0;
   SK={atk:0,def:0,hpUp:0,fr:0,ms:0,pr:0,regen:0,crit:0,mag:0,shield:0};
-  playerLevel=1;playerExp=0;expToNext=50;
+  playerLevel=0;playerExp=0;expToNext=50;
   initWeapons();
   eq = {武器:null, 护甲:null, 头盔:null, 饰品:null};
   document.getElementById('ctrls').innerHTML = '<button id="btn" onclick="startGame()">开始游戏</button><button onclick="ST(\"minion\")">仆从</button><button onclick="ST(\"gear\")">装备</button>';
