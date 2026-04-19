@@ -118,7 +118,7 @@ button:hover{border-color:#7DF9AA;color:#7DF9AA}
 const CV=document.getElementById('c'),CT=CV.getContext('2d'),W=500,H=640;
 
 // ═══ 持久数据 ═══
-const P={rc:5,clearedWave:0,gold:0,sp:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};
+const P={rc:5,clearedWave:0,gold:0,sp:0,eLv:{武器:0,护甲:0,头盔:0,饰品:0}};//！！！！！！！
 
 // ═══ 每局数据（startGame重建） ═══
 let G=null,PL=null;
@@ -166,6 +166,64 @@ function getSkillCost(key){
 function getBaseShield(){return SK.shield||0;}
 function getSkillGoldMultiplier(){return Math.pow(2,SK.goldRate||0);}
 function getSkillExpMultiplier(){return Math.pow(2,SK.expRate||0);}
+function buySkillBatch(key, count) {
+  const meta = SKILL_META[key];
+  if (!meta) return;
+  let bought = 0;
+  let rank = SK[key] || 0;
+  const cap = getSkillCap(key);
+  while (bought < count && rank < cap) {
+    const cost = getSkillCost(key);
+    if (P.sp < cost) break;
+    P.sp -= cost;
+    rank++;
+    bought++;
+    SK[key] = rank;
+    if (key === 'hpUp' && G) {
+      const nm = getMxHp();
+      G.hp = Math.min(G.hp + (nm - G.maxHp), nm);
+      G.maxHp = nm;
+    }
+    if (key === 'shield' && G && G.state !== 'dead') G.shield += 1;
+  }
+  if (bought > 0) {
+    showToast(meta.n + ' +'+bought+' Lv.' + SK[key]);
+    updHUD();
+    if (curTab === 'skill') renderSkill();
+  } else {
+    if (rank >= cap) showToast(meta.n + ' 已满级');
+    else showToast('技能点不足');
+  }
+}
+function buySkillMax(key) {
+  const meta = SKILL_META[key];
+  if (!meta) return;
+  let bought = 0;
+  let rank = SK[key] || 0;
+  const cap = getSkillCap(key);
+  while (rank < cap) {
+    const cost = getSkillCost(key);
+    if (P.sp < cost) break;
+    P.sp -= cost;
+    rank++;
+    bought++;
+    SK[key] = rank;
+    if (key === 'hpUp' && G) {
+      const nm = getMxHp();
+      G.hp = Math.min(G.hp + (nm - G.maxHp), nm);
+      G.maxHp = nm;
+    }
+    if (key === 'shield' && G && G.state !== 'dead') G.shield += 1;
+  }
+  if (bought > 0) {
+    showToast(meta.n + ' +'+bought+' Lv.' + SK[key]);
+    updHUD();
+    if (curTab === 'skill') renderSkill();
+  } else {
+    if (rank >= cap) showToast(meta.n + ' 已满级');
+    else showToast('技能点不足');
+  }
+}
 function buySkill(key){
   const meta=SKILL_META[key];
   if(!meta)return;
@@ -373,6 +431,14 @@ function autoRankMinion(t,silent){
   return gained;
 }
 
+function doGachaBatch(n) {
+  doGacha(n);
+}
+function doGachaMax() {
+  const maxCount = Math.floor(P.rc / 5);
+  if (maxCount > 0) doGacha(maxCount);
+  else showToast('转生币不足');
+}
 function doGacha(n){
   const cost=n*5;if(P.rc<cost){showToast('转生币不足需'+cost);return;}P.rc-=cost;
   const res=[];
@@ -407,6 +473,68 @@ function upgM(t){
   d.sh-=need;d.rank++;showToast(MM[t].n+' 升阶+'+d.rank);if(curTab==='minion')renderMinion();
 }
 
+function lvlMBatch(t, count) {
+  const d = ensureMinionData(mD[t]);
+  if (!d) { showToast('未拥有'); return; }
+  let up = 0;
+  while (up < count) {
+    const cost = (d.lvl + d.ri + 1) * 500;
+    if (P.gold < cost) break;
+    P.gold -= cost; d.lvl++; up++;
+  }
+  if (up > 0) {
+    showToast(MM[t].n + ' 强化+' + up + ' Lv' + d.lvl);
+    updHUD(); if (curTab === 'minion') renderMinion();
+  } else {
+    showToast('金币不足');
+  }
+}
+function lvlMMax(t) {
+  const d = ensureMinionData(mD[t]);
+  if (!d) { showToast('未拥有'); return; }
+  let up = 0;
+  while (true) {
+    const cost = (d.lvl + d.ri + 1) * 500;
+    if (P.gold < cost) break;
+    P.gold -= cost; d.lvl++; up++;
+  }
+  if (up > 0) {
+    showToast(MM[t].n + ' 强化+' + up + ' Lv' + d.lvl);
+    updHUD(); if (curTab === 'minion') renderMinion();
+  } else {
+    showToast('金币不足');
+  }
+}
+function upgradeGBatch(t, count) {
+  const g = ensureGearState(eq[t]); if (!g) { showToast('无装备'); return; }
+  let up = 0;
+  while (up < count) {
+    const cost = (g.lv + 1) * 300;
+    if (P.gold < cost) break;
+    P.gold -= cost; g.lv++; applyGearLevel(g); up++;
+  }
+  if (up > 0) {
+    showToast(g.name + ' 强化+' + up + ' Lv' + g.lv);
+    updHUD(); if (curTab === 'gear') renderGear();
+  } else {
+    showToast('金币不足');
+  }
+}
+function upgradeGMax(t) {
+  const g = ensureGearState(eq[t]); if (!g) { showToast('无装备'); return; }
+  let up = 0;
+  while (true) {
+    const cost = (g.lv + 1) * 300;
+    if (P.gold < cost) break;
+    P.gold -= cost; g.lv++; applyGearLevel(g); up++;
+  }
+  if (up > 0) {
+    showToast(g.name + ' 强化+' + up + ' Lv' + g.lv);
+    updHUD(); if (curTab === 'gear') renderGear();
+  } else {
+    showToast('金币不足');
+  }
+}
 function lvlM(t){
   const d=ensureMinionData(mD[t]);if(!d){showToast('未拥有');return;}
   const cost=(d.lvl+d.ri+1)*500;if(P.gold<cost){showToast('需'+cost+'金');return;}
@@ -495,11 +623,11 @@ function drawPL(){
 
 // ═══ 怪物 ═══
 const ET=[
-  {n:'幼年恐龙',w:26,h:18,hp:2,spd:.6,exp:10,cn:5,col:'#84cc16',shape:'dino',sI:90,bS:2.8,bP:'single'},
-  {n:'外星尖兵',w:22,h:22,hp:3,spd:.85,exp:20,cn:10,col:'#22c55e',shape:'alien',sI:65,bS:3.5,bP:'aimed'},
-  {n:'异星重甲兽',w:30,h:24,hp:7,spd:.32,exp:35,cn:20,col:'#a855f7',shape:'brute',sI:48,bS:2.2,bP:'spread'},
-  {n:'飞碟侦察者',w:28,h:18,hp:4,spd:.5,exp:28,cn:14,col:'#2dd4bf',shape:'ufo',sI:75,bS:3,bP:'spiral'},
-  {n:'异星暴君',w:52,h:40,hp:40,spd:.22,exp:300,cn:120,col:'#FFE066',shape:'boss',sI:30,bS:3,bP:'boss'},
+  {n:'幼年恐龙',w:26,h:18,hp:2,spd:.6,exp:10,cn:5,col:'#84cc16',shape:'dino',sI:900,bS:2.8,bP:'single'},
+  {n:'外星尖兵',w:22,h:22,hp:3,spd:.85,exp:20,cn:10,col:'#22c55e',shape:'alien',sI:650,bS:3.5,bP:'aimed'},
+  {n:'异星重甲兽',w:30,h:24,hp:7,spd:.32,exp:35,cn:20,col:'#a855f7',shape:'brute',sI:480,bS:2.2,bP:'spread'},
+  {n:'飞碟侦察者',w:28,h:18,hp:4,spd:.5,exp:28,cn:14,col:'#2dd4bf',shape:'ufo',sI:750,bS:3,bP:'spiral'},
+  {n:'异星暴君',w:52,h:40,hp:40,spd:.22,exp:300,cn:120,col:'#FFE066',shape:'boss',sI:300,bS:3,bP:'boss'},
 ];
 function bossStageFactor(w){
   return Math.pow(10,Math.floor((w-1)/5));
@@ -514,9 +642,9 @@ function buildQ(waveNo){
     b.maxHp=b.hp;b.cn=Math.round(b.cn*em.cn*bossFactor);b.exp=Math.round(b.exp*bossFactor);
     q.push(b);return q;
   }
+  // 非boss关卡，怪物数量固定为10
   const diff=wDiff(waveNo),avail=Math.min(4,1+Math.floor((waveNo-1)/2)),pool=ET.slice(0,avail);
-  const base=Math.round(7+waveNo*3.5);
-  const total=Math.round(base*diff*.6);
+  const total=10;
   for(let i=0;i<total;i++){
     const t={...pool[Math.floor(Math.random()*pool.length)]};
     t.hp=Math.round(t.hp*diff*em.hp*bossFactor);
@@ -967,7 +1095,16 @@ function tick(ts){
   // 波次管理
   if(G.wState==='spawning'){
     spT-=dt;
-    if(spT<=0&&wQ.length>0){const bs=G.wave%5===0?1:Math.min(6,wQ.length);for(let i=0;i<bs&&wQ.length>0;i++)spE(wQ.shift());spT=G.wave%5===0?40:12;}
+    if(spT<=0&&wQ.length>0){
+      let bs;
+      if(G.wave%5===0){
+        bs = 1;
+      }else{
+        bs = wQ.length;
+      }
+      for(let i=0;i<bs&&wQ.length>0;i++)spE(wQ.shift());
+      spT=G.wave%5===0?40:12;
+    }
     if(wQ.length===0)G.wState='waiting';
   }
   if(G.triggerWave>0&&G.triggerWave%5!==0&&G.waveSizes[G.triggerWave]&&G.maxWaveStarted===G.triggerWave&&aliveInWave(G.triggerWave)<=Math.floor(G.waveSizes[G.triggerWave]/2)){
@@ -1160,8 +1297,15 @@ function renderMinion(){
   mkSec(rp,'仆从抽卡（转生币）');
   const qi=document.createElement('div');qi.style='color:#c084fc;font-size:11px;margin-bottom:7px';qi.textContent='转生币: '+P.rc+'  死亡后获得 boss数量³ + 人物等级';rp.appendChild(qi);
   const gr=document.createElement('div');gr.style='display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap';
-  // 修正：单抽5币，五连25币，十连50币（每次5币）
-  [[1,5,'单抽'],[5,25,'五连'],[10,50,'十连']].forEach(([n,c,l])=>{const b=document.createElement('button');b.style='font-size:11px;color:'+(P.rc>=c?'#FFE066':'#444');b.textContent=l+'('+c+'币)';b.onclick=()=>doGacha(n);gr.appendChild(b);});rp.appendChild(gr);
+  // 修正：单抽5币，五连25币，十连50币（每次5币）+ 批量抽卡
+  [[1,5,'单抽'],[5,25,'五连'],[10,50,'十连'],[100,500,'百连'],['max',null,'MAX']].forEach(([n,c,l])=>{
+    const b=document.createElement('button');
+    b.style='font-size:11px;color:'+(n==='max'||P.rc>=(c||5)?'#FFE066':'#444');
+    b.textContent=l+(c?'('+c+'币)':'');
+    if(n==='max') b.onclick=()=>doGachaMax();
+    else b.onclick=()=>doGachaBatch(n);
+    gr.appendChild(b);
+  });rp.appendChild(gr);
   const qr=document.createElement('div');qr.style='display:flex;gap:3px;margin-bottom:7px;flex-wrap:wrap';
   RAR.forEach(r=>{const d=document.createElement('div');d.style='background:'+r.bg+';border:1px solid '+r.b+';border-radius:3px;padding:2px 6px;font-size:10px;color:'+r.c;d.textContent=r.n;qr.appendChild(d);});rp.appendChild(qr);
   mkSec(rp,'已拥有（最多出战4个）');
@@ -1180,7 +1324,12 @@ function renderMinion(){
       +'<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">'
       +(d&&!isA&&mAct.length<4?'<button onclick="toggleMA(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#7DF9AA">出战</button>':'')
       +(isA?'<button onclick="toggleMA(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#555">收回</button>':'')
-      +(d?'<button onclick="lvlM(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#FFE066">强化</button>':'')
+      +(d?'<div style="display:flex;gap:2px">'
+        +'<button onclick="lvlM(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#FFE066">强化</button>'
+        +'<button onclick="lvlMBatch(\''+type.replace(/'/g,'\\\'')+'\',100)" style="font-size:10px;padding:2px 7px;color:#7DF9AA">+100</button>'
+        +'<button onclick="lvlMMax(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#fb923c">MAX</button>'
+        +'</div>'
+      :'')
       +(d&&d.sh>=sN?'<button onclick="upgM(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 7px;color:#fb923c">升阶</button>':'')
       +'</div></div>';
     rp.appendChild(card);
@@ -1210,9 +1359,12 @@ function renderGear(){
       +'<div style="font-size:10px;color:#444;margin:3px 0">'+Object.entries(g.stats).map(([k,v])=>k+'+'+v).join('  ')+'</div>'
       +(g.suit?'<div style="font-size:9px;color:'+AS[g.suit]?.c+'">护甲套: '+g.suit+'</div>':'')
       +(g.wsuit?'<div style="font-size:9px;color:#FFE066">武器套: '+g.wsuit+'</div>':'')
-      +'<div style="display:flex;gap:5px;margin-top:5px">'
+      +'<div style="display:flex;gap:2px;margin-top:5px">'
       +'<button onclick="upgradeG(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#FFE066">强化('+(lv+1)*300+'金)</button>'
-      +'<button onclick="ascendG(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#c084fc">升阶重铸(消耗1件同品质)</button></div>';
+      +'<button onclick="upgradeGBatch(\''+type.replace(/'/g,'\\\'')+'\',100)" style="font-size:10px;padding:2px 8px;color:#7DF9AA">+100</button>'
+      +'<button onclick="upgradeGMax(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#fb923c">MAX</button>'
+      +'<button onclick="ascendG(\''+type.replace(/'/g,'\\\'')+'\')" style="font-size:10px;padding:2px 8px;color:#c084fc">升阶重铸(消耗1件同品质)</button>'
+      +'</div>';
   }else{eqDiv.style='border:1px solid #1a1a1a;border-radius:5px;padding:8px;color:#222;font-size:11px';eqDiv.textContent=type+' 槽位为空';}
   rp.appendChild(eqDiv);
   mkSec(rp,'背包 - '+type);
@@ -1273,7 +1425,11 @@ function renderSkill(){
     card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><span style="color:#7DF9AA;font-size:15px">'+meta.ic+'</span><span style="color:'+(maxed?'#4ade80':'#666')+';font-size:10px">Lv.'+rank+(cap<Infinity?'/'+cap:'')+'</span></div>'
       +'<div style="color:#eee;font-size:11px;font-weight:500">'+meta.n+'</div>'
       +'<div style="color:#555;font-size:9px;line-height:1.5;margin:4px 0 6px">'+meta.d+'</div>'
-      +'<button onclick="buySkill(\''+key+'\')" style="width:100%;font-size:10px;padding:4px 6px;color:'+(maxed?'#4ade80':P.sp>=cost?'#FFE066':'#666')+'">'+(maxed?'已满级':'购买('+cost+'点)')+'</button>';
+      +'<div style="display:flex;gap:2px;margin-bottom:2px">'
+      +'<button onclick="buySkill(\''+key+'\')" style="flex:1;font-size:10px;padding:4px 2px;color:'+(maxed?'#4ade80':P.sp>=cost?'#FFE066':'#666')+'">'+(maxed?'已满级':'购买('+cost+'点)')+'</button>'
+      +'<button onclick="buySkillBatch(\''+key+'\',100)" style="flex:1;font-size:10px;padding:4px 2px;color:'+(maxed?'#4ade80':P.sp>=cost?'#7DF9AA':'#666')+'">买100</button>'
+      +'<button onclick="buySkillMax(\''+key+'\')" style="flex:1;font-size:10px;padding:4px 2px;color:'+(maxed?'#4ade80':P.sp>=cost?'#fb923c':'#666')+'">买满</button>'
+      +'</div>';
     grid.appendChild(card);
   });
   rp.appendChild(grid);
